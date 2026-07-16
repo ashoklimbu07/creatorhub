@@ -29,12 +29,19 @@ function platformLabel(key: string) {
   return platforms.find((p) => p.key === key)?.label ?? key
 }
 
+export type YouTubeConnectionInfo = {
+  name: string
+  thumbnailUrl: string | null
+}
+
 export function ConnectedAccounts({
   initialConnected,
+  youtubeConnection,
   callbackConnected,
   callbackError,
 }: {
   initialConnected: Platform[]
+  youtubeConnection?: YouTubeConnectionInfo | null
   callbackConnected?: string
   callbackError?: string
 }) {
@@ -74,34 +81,55 @@ export function ConnectedAccounts({
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
       {platforms.map(({ key, label, icon: Icon }) => {
-        const isConnected = connectedSet.has(key)
+        const isYouTube = key === "YOUTUBE"
+        const isConnected = isYouTube ? Boolean(youtubeConnection) : connectedSet.has(key)
+
         return (
           <Card key={key}>
             <CardContent className="flex flex-col items-center gap-3 px-4 py-5 text-center">
-              <Icon
-                className={cn(
-                  "size-6",
-                  isConnected ? "text-primary" : "text-muted-foreground"
-                )}
-              />
+              {isYouTube && youtubeConnection?.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={youtubeConnection.thumbnailUrl}
+                  alt=""
+                  className="size-6 rounded-full"
+                />
+              ) : (
+                <Icon
+                  className={cn(
+                    "size-6",
+                    isConnected ? "text-primary" : "text-muted-foreground"
+                  )}
+                />
+              )}
               <div>
                 <p className="text-sm font-medium">{label}</p>
-                <p className="text-xs text-muted-foreground">
-                  {isConnected ? "Connected" : "Not connected"}
+                <p className="truncate text-xs text-muted-foreground">
+                  {isYouTube && youtubeConnection
+                    ? youtubeConnection.name
+                    : isConnected
+                      ? "Connected"
+                      : "Not connected"}
                 </p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant={isConnected ? "outline" : "default"}
-                className="w-full"
-                disabled={isPending}
-                onClick={() =>
-                  isConnected ? handleDisconnect(key) : handleConnect(key)
-                }
-              >
-                {isConnected ? "Disconnect" : "Connect"}
-              </Button>
+              {isYouTube && !isConnected ? (
+                <Button type="button" size="sm" className="w-full" asChild>
+                  <a href="/api/platforms/youtube/connect">Connect</a>
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isConnected ? "outline" : "default"}
+                  className="w-full"
+                  disabled={isPending}
+                  onClick={() =>
+                    isConnected ? handleDisconnect(key) : handleConnect(key)
+                  }
+                >
+                  {isConnected ? "Disconnect" : "Connect"}
+                </Button>
+              )}
             </CardContent>
           </Card>
         )

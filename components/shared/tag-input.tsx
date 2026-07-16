@@ -10,12 +10,14 @@ export function TagInput({
   value,
   onChange,
   placeholder = "Add a hashtag and press Enter",
+  hashPrefix = true,
   disabled,
   className,
 }: {
   value: string[]
   onChange: (tags: string[]) => void
   placeholder?: string
+  hashPrefix?: boolean
   disabled?: boolean
   className?: string
 }) {
@@ -53,7 +55,7 @@ export function TagInput({
     >
       {value.map((tag) => (
         <Badge key={tag} variant="secondary" className="gap-1 pr-1">
-          #{tag}
+          {hashPrefix ? `#${tag}` : tag}
           <button
             type="button"
             onClick={() => removeTag(tag)}

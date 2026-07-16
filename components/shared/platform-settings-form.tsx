@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -30,6 +31,7 @@ import { SchedulePicker } from "@/components/shared/schedule-picker"
 import {
   platformSettingsSchema,
   platformLabels,
+  hashtagsFieldLabel,
   PLATFORMS_WITH_DESCRIPTION,
   type PlatformSettingsInput,
 } from "@/lib/validations/platform-settings"
@@ -57,6 +59,7 @@ export function PlatformSettingsForm({
       caption: initialData?.caption ?? "",
       description: initialData?.description ?? "",
       hashtags: initialData?.hashtags ?? [],
+      containsAltered: initialData?.containsAltered ?? false,
       privacy: initialData?.privacy ?? "PUBLIC",
       scheduledAt: initialData?.scheduledAt ?? null,
     },
@@ -101,20 +104,6 @@ export function PlatformSettingsForm({
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="caption"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Caption</FormLabel>
-              <FormControl>
-                <Textarea placeholder="Write a caption…" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
         {supportsDescription ? (
           <FormField
             control={form.control}
@@ -134,13 +123,19 @@ export function PlatformSettingsForm({
             )}
           />
         ) : (
-          <div>
-            <p className="text-sm font-medium">Description</p>
-            <p className="text-xs text-muted-foreground">
-              {platformLabels[platform]} doesn&apos;t support a separate
-              description — use the caption instead.
-            </p>
-          </div>
+          <FormField
+            control={form.control}
+            name="caption"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Caption</FormLabel>
+                <FormControl>
+                  <Textarea placeholder="Write a caption…" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         )}
 
         <FormField
@@ -148,10 +143,44 @@ export function PlatformSettingsForm({
           name="hashtags"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Hashtags</FormLabel>
+              <FormLabel>{hashtagsFieldLabel[platform]}</FormLabel>
               <FormControl>
-                <TagInput value={field.value} onChange={field.onChange} />
+                <TagInput
+                  value={field.value}
+                  onChange={field.onChange}
+                  hashPrefix={!supportsDescription}
+                  placeholder={
+                    supportsDescription
+                      ? "Add a tag and press Enter"
+                      : "Add a hashtag and press Enter"
+                  }
+                />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="containsAltered"
+          render={({ field }) => (
+            <FormItem>
+              <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                <div className="space-y-0.5">
+                  <FormLabel>Altered or synthetic content</FormLabel>
+                  <p className="text-xs text-muted-foreground">
+                    Tell viewers when this video contains realistic altered or
+                    synthetic content, like AI-generated media.
+                  </p>
+                </div>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </div>
               <FormMessage />
             </FormItem>
           )}

@@ -1,5 +1,5 @@
 import { z } from "zod"
-import type { Platform } from "@prisma/client"
+import type { Platform, PlatformSettings } from "@prisma/client"
 
 export const platformSettingsSchema = z
   .object({
@@ -13,6 +13,7 @@ export const platformSettingsSchema = z
     hashtags: z
       .array(z.string().min(1).max(50))
       .max(30, "Too many hashtags"),
+    containsAltered: z.boolean(),
     privacy: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]),
     scheduledAt: z.date().nullable(),
   })
@@ -23,8 +24,9 @@ export const platformSettingsSchema = z
 
 export type PlatformSettingsInput = z.infer<typeof platformSettingsSchema>
 
-// Real-world constraint: only YouTube supports a separate long-form
-// description field alongside the caption.
+// Real-world constraint: only YouTube has a separate long-form description
+// field — it has no "caption" concept at all, so its tab uses description in
+// place of caption everywhere (required-field checks, tags label, etc).
 export const PLATFORMS_WITH_DESCRIPTION: Platform[] = ["YOUTUBE"]
 
 export const platformLabels: Record<Platform, string> = {
@@ -32,4 +34,23 @@ export const platformLabels: Record<Platform, string> = {
   TIKTOK: "TikTok",
   INSTAGRAM: "Instagram",
   FACEBOOK: "Facebook",
+}
+
+// YouTube calls this field "Tags," not hashtags.
+export const hashtagsFieldLabel: Record<Platform, string> = {
+  YOUTUBE: "Tags",
+  TIKTOK: "Hashtags",
+  INSTAGRAM: "Hashtags",
+  FACEBOOK: "Hashtags",
+}
+
+export function isPlatformSettingsComplete(
+  platform: Platform,
+  settings: PlatformSettings | null | undefined
+): settings is PlatformSettings {
+  if (!settings || !settings.title.trim()) return false
+  const contentField = PLATFORMS_WITH_DESCRIPTION.includes(platform)
+    ? settings.description
+    : settings.caption
+  return Boolean(contentField?.trim())
 }

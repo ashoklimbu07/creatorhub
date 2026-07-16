@@ -9,6 +9,8 @@ import { getSignedVideoUrl } from "@/lib/storage"
 import { platformServices } from "@/services/platforms"
 import {
   platformSettingsSchema,
+  isPlatformSettingsComplete,
+  PLATFORMS_WITH_DESCRIPTION,
   type PlatformSettingsInput,
 } from "@/lib/validations/platform-settings"
 
@@ -54,6 +56,7 @@ export async function savePlatformSettings(
       caption: parsed.caption || null,
       description: parsed.description || null,
       hashtags: parsed.hashtags,
+      containsAltered: parsed.containsAltered,
       privacy: parsed.privacy,
       scheduledAt: parsed.scheduledAt,
     },
@@ -62,6 +65,7 @@ export async function savePlatformSettings(
       caption: parsed.caption || null,
       description: parsed.description || null,
       hashtags: parsed.hashtags,
+      containsAltered: parsed.containsAltered,
       privacy: parsed.privacy,
       scheduledAt: parsed.scheduledAt,
     },
@@ -113,11 +117,14 @@ export async function publishPlatform(
     where: { videoId_platform: { videoId, platform } },
   })
 
-  if (!settings || !settings.title.trim() || !settings.caption?.trim()) {
+  if (!isPlatformSettingsComplete(platform, settings)) {
+    const contentLabel = PLATFORMS_WITH_DESCRIPTION.includes(platform)
+      ? "description"
+      : "caption"
     return {
       platform,
       success: false,
-      error: "This platform's tab isn't complete — add a title and caption first.",
+      error: `This platform's tab isn't complete — add a title and ${contentLabel} first.`,
     }
   }
 
@@ -131,11 +138,13 @@ export async function publishPlatform(
 
   const result = connected
     ? await service.publish({
+        userId,
         videoUrl: await getSignedVideoUrl(video.fileUrl),
         title: settings.title,
         caption: settings.caption ?? "",
         description: settings.description ?? undefined,
         hashtags: settings.hashtags,
+        containsAltered: settings.containsAltered,
         privacy: settings.privacy,
         scheduledAt: settings.scheduledAt ?? undefined,
       })

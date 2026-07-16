@@ -86,34 +86,6 @@ export default async function DraftDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Details</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Title</p>
-            <p>{video.title}</p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              Description
-            </p>
-            <p className={video.description ? "" : "text-muted-foreground"}>
-              {video.description || "No description provided."}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              File size
-            </p>
-            <p>
-              {video.sizeBytes != null ? formatFileSize(video.sizeBytes) : "Unknown"}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>Platform settings</CardTitle>
         </CardHeader>
         <CardContent>
