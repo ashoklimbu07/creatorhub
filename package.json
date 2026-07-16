@@ -10,12 +10,15 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "storage:enforce-quota": "tsx scripts/enforce-storage-quota.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1088.0",
+    "@aws-sdk/s3-request-presigner": "^3.1088.0",
     "@hookform/resolvers": "^5.4.0",
     "@prisma/client": "^5.22.0",
     "@supabase/ssr": "^0.12.3",

@@ -1,0 +1,52 @@
+import { prisma } from "@/lib/prisma"
+import { deleteFile, listVideoObjects } from "@/lib/storage"
+
+const THRESHOLD_BYTES = 9 * 1000 * 1000 * 1000 // 9 GB
+
+export function gb(bytes: number): string {
+  return (bytes / 1_000_000_000).toFixed(2)
+}
+
+export type QuotaResult = {
+  usageBytes: number
+  deletedCount: number
+  finalUsageBytes: number
+}
+
+// Global bucket-wide quota: if total R2 usage exceeds the threshold, deletes
+// the oldest videos (DB row + R2 object) until back under it. Not scoped to a
+// single user — the R2 free tier limit is account-wide, not per-user.
+export async function enforceStorageQuota(): Promise<QuotaResult> {
+  const sizeByKey = await listVideoObjects()
+  const usageBytes = [...sizeByKey.values()].reduce((sum, size) => sum + size, 0)
+
+  if (usageBytes <= THRESHOLD_BYTES) {
+    return { usageBytes, deletedCount: 0, finalUsageBytes: usageBytes }
+  }
+
+  const videos = await prisma.video.findMany({
+    orderBy: { createdAt: "asc" },
+    select: { id: true, title: true, fileUrl: true, createdAt: true },
+  })
+
+  let remaining = usageBytes
+  let deletedCount = 0
+
+  for (const video of videos) {
+    if (remaining <= THRESHOLD_BYTES) break
+
+    const objectSize = sizeByKey.get(video.fileUrl) ?? 0
+
+    await prisma.video.delete({ where: { id: video.id } })
+    try {
+      await deleteFile(video.fileUrl)
+    } catch (err) {
+      console.error(`[storage-quota] failed to delete R2 object ${video.fileUrl}:`, err)
+    }
+
+    remaining -= objectSize
+    deletedCount++
+  }
+
+  return { usageBytes, deletedCount, finalUsageBytes: remaining }
+}

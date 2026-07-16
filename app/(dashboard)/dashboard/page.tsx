@@ -1,7 +1,13 @@
+import { Suspense } from "react"
+import Link from "next/link"
 import { redirect } from "next/navigation"
+import { UploadCloud } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/server"
-import { signOut } from "@/app/(auth)/actions"
+import { RecentUploads } from "@/components/shared/recent-uploads"
+import { RecentUploadsSkeleton } from "@/components/shared/recent-uploads-skeleton"
+import { ConnectedAccounts } from "@/components/shared/connected-accounts"
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -14,13 +20,33 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center gap-4 p-4">
-      <p className="text-lg">Logged in as {user.email}</p>
-      <form action={signOut}>
-        <Button type="submit" variant="outline">
-          Sign out
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-muted-foreground">
+            Upload once, publish everywhere.
+          </p>
+        </div>
+        <Button asChild size="lg">
+          <Link href="/dashboard/upload">
+            <UploadCloud />
+            Upload video
+          </Link>
         </Button>
-      </form>
+      </div>
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-medium">Recent uploads</h2>
+        <Suspense fallback={<RecentUploadsSkeleton />}>
+          <RecentUploads userId={user.id} />
+        </Suspense>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-medium">Connected accounts</h2>
+        <ConnectedAccounts />
+      </section>
     </div>
   )
 }

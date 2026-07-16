@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local video uploads (dev-only storage backend, see lib/storage.ts)
+/.uploads/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
