@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation"
-import { Share2 } from "lucide-react"
+import type { Platform, PlatformSettings } from "@prisma/client"
 
 import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
@@ -8,12 +8,15 @@ import { formatFileSize } from "@/lib/utils"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
 import { VideoStatusBadge } from "@/components/shared/video-status-badge"
 import { DeleteDraftButton } from "@/components/shared/delete-draft-button"
+import { PlatformSettingsTabs } from "@/components/shared/platform-settings-tabs"
+import { PublishPanel } from "@/components/shared/publish-panel"
+
+const ALL_PLATFORMS: Platform[] = ["YOUTUBE", "TIKTOK", "INSTAGRAM", "FACEBOOK"]
 
 export default async function DraftDetailPage({
   params,
@@ -33,7 +36,7 @@ export default async function DraftDetailPage({
 
   const draft = await prisma.draft.findUnique({
     where: { id },
-    include: { video: true },
+    include: { video: { include: { platformSettings: true } } },
   })
 
   if (!draft || draft.video.userId !== user.id) {
@@ -42,6 +45,15 @@ export default async function DraftDetailPage({
 
   const { video } = draft
   const videoUrl = await getSignedVideoUrl(video.fileUrl)
+
+  const settingsByPlatform = ALL_PLATFORMS.reduce(
+    (acc, platform) => {
+      acc[platform] =
+        video.platformSettings.find((s) => s.platform === platform) ?? null
+      return acc
+    },
+    {} as Record<Platform, PlatformSettings | null>
+  )
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -58,7 +70,10 @@ export default async function DraftDetailPage({
             )}
           </div>
         </div>
-        <DeleteDraftButton videoId={video.id} redirectTo="/dashboard/drafts" />
+        <div className="flex items-center gap-2">
+          <PublishPanel videoId={video.id} settingsByPlatform={settingsByPlatform} />
+          <DeleteDraftButton videoId={video.id} redirectTo="/dashboard/drafts" />
+        </div>
       </div>
 
       <Card className="overflow-hidden py-0">
@@ -97,17 +112,16 @@ export default async function DraftDetailPage({
         </CardContent>
       </Card>
 
-      <Card className="border-dashed">
+      <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Share2 className="size-4 text-muted-foreground" />
-            <CardTitle>Platform settings</CardTitle>
-          </div>
-          <CardDescription>
-            Per-platform titles, captions, hashtags, privacy, and scheduling
-            are coming in Phase 3.
-          </CardDescription>
+          <CardTitle>Platform settings</CardTitle>
         </CardHeader>
+        <CardContent>
+          <PlatformSettingsTabs
+            videoId={video.id}
+            settingsByPlatform={settingsByPlatform}
+          />
+        </CardContent>
       </Card>
     </div>
   )
