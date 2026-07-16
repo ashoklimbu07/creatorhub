@@ -5,6 +5,7 @@ import { UploadCloud } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/server"
+import { prisma } from "@/lib/prisma"
 import { RecentUploads } from "@/components/shared/recent-uploads"
 import { RecentUploadsSkeleton } from "@/components/shared/recent-uploads-skeleton"
 import { ConnectedAccounts } from "@/components/shared/connected-accounts"
@@ -18,6 +19,11 @@ export default async function DashboardPage() {
   if (!user) {
     redirect("/login")
   }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { connectedPlatforms: true },
+  })
 
   return (
     <div className="flex flex-col gap-8">
@@ -45,7 +51,7 @@ export default async function DashboardPage() {
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Connected accounts</h2>
-        <ConnectedAccounts />
+        <ConnectedAccounts initialConnected={dbUser?.connectedPlatforms ?? []} />
       </section>
     </div>
   )
