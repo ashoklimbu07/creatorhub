@@ -20,10 +20,16 @@ export default async function AccountsPage({
     redirect("/login")
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: { connectedPlatforms: true },
-  })
+  const [dbUser, youtubeConnection] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: user.id },
+      select: { connectedPlatforms: true },
+    }),
+    prisma.platformConnection.findUnique({
+      where: { userId_platform: { userId: user.id, platform: "YOUTUBE" } },
+      select: { externalAccountName: true, externalAccountThumbnail: true },
+    }),
+  ])
 
   return (
     <div className="flex flex-col gap-6">
@@ -35,6 +41,14 @@ export default async function AccountsPage({
       </div>
       <ConnectedAccounts
         initialConnected={dbUser?.connectedPlatforms ?? []}
+        youtubeConnection={
+          youtubeConnection
+            ? {
+                name: youtubeConnection.externalAccountName,
+                thumbnailUrl: youtubeConnection.externalAccountThumbnail,
+              }
+            : null
+        }
         callbackConnected={connected}
         callbackError={error}
       />

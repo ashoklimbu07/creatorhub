@@ -27,7 +27,10 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { platformLabels } from "@/lib/validations/platform-settings"
+import {
+  platformLabels,
+  isPlatformSettingsComplete,
+} from "@/lib/validations/platform-settings"
 import {
   startPublishBatch,
   publishPlatform,
@@ -66,10 +69,9 @@ export function PublishPanel({
   const [results, setResults] = useState<Partial<Record<Platform, ResultState>>>({})
   const [retryTick, setRetryTick] = useState<Partial<Record<Platform, number>>>({})
 
-  const eligiblePlatforms = ALL_PLATFORMS.filter((platform) => {
-    const settings = settingsByPlatform[platform]
-    return Boolean(settings?.title.trim() && settings.caption?.trim())
-  })
+  const eligiblePlatforms = ALL_PLATFORMS.filter((platform) =>
+    isPlatformSettingsComplete(platform, settingsByPlatform[platform])
+  )
   const notEligible = ALL_PLATFORMS.filter((p) => !eligiblePlatforms.includes(p))
   const isPublishing = batch.some((p) => {
     const status = results[p]?.status
@@ -169,8 +171,8 @@ export function PublishPanel({
                 <DialogTitle>Publish this video?</DialogTitle>
                 <DialogDescription>
                   {eligiblePlatforms.length === 0
-                    ? "No platforms are ready yet — fill in a title and caption on at least one tab."
-                    : "These platforms have a title and caption filled in and will be published:"}
+                    ? "No platforms are ready yet — fill in a title and caption (or description for YouTube) on at least one tab."
+                    : "These platforms are filled in and will be published:"}
                 </DialogDescription>
               </DialogHeader>
 

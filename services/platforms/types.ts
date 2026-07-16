@@ -3,11 +3,13 @@ import type { Platform, Privacy } from "@prisma/client"
 export type { Platform, Privacy }
 
 export interface PublishInput {
+  userId: string
   videoUrl: string
   title: string
   caption: string
   description?: string
   hashtags: string[]
+  containsAltered: boolean
   privacy: Privacy
   scheduledAt?: Date
 }
