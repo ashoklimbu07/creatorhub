@@ -36,4 +36,6 @@ export const thumbnailUploadUrlRequestSchema = z.object({
 export const finalizeUploadSchema = videoMetadataSchema.extend({
   key: z.string().min(1),
   thumbnailKey: z.string().min(1).optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
 })

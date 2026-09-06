@@ -6,6 +6,7 @@ import type { Platform, PlatformSettings } from "@prisma/client"
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { PlatformSettingsForm } from "@/components/shared/platform-settings-form"
+import type { SourceDimensions } from "@/components/shared/video-workspace"
 
 const PLATFORM_TABS: {
   key: Platform
@@ -21,9 +22,11 @@ const PLATFORM_TABS: {
 export function PlatformSettingsTabs({
   videoId,
   settingsByPlatform,
+  sourceDimensions,
 }: {
   videoId: string
   settingsByPlatform: Record<Platform, PlatformSettings | null>
+  sourceDimensions: SourceDimensions | null
 }) {
   const [dirty, setDirty] = useState<Record<Platform, boolean>>({
     YOUTUBE: false,
@@ -71,6 +74,7 @@ export function PlatformSettingsTabs({
             videoId={videoId}
             platform={key}
             initialData={settingsByPlatform[key]}
+            sourceDimensions={sourceDimensions}
             onDirtyChange={(isDirty) => handleDirtyChange(key, isDirty)}
           />
         </TabsContent>

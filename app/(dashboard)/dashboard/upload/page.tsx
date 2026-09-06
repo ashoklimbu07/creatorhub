@@ -34,18 +34,25 @@ import {
 } from "@/lib/validations/video"
 import { formatFileSize } from "@/lib/utils"
 
-function captureVideoFrame(file: File): Promise<Blob | null> {
+type VideoFrameResult = {
+  thumbnail: Blob | null
+  width: number | null
+  height: number | null
+}
+
+function captureVideoFrame(file: File): Promise<VideoFrameResult> {
   return new Promise((resolve) => {
     const video = document.createElement("video")
     const objectUrl = URL.createObjectURL(file)
     let settled = false
+    let dimensions: { width: number; height: number } | null = null
 
-    function finish(blob: Blob | null) {
+    function finish(thumbnail: Blob | null) {
       if (settled) return
       settled = true
       URL.revokeObjectURL(objectUrl)
       video.remove()
-      resolve(blob)
+      resolve({ thumbnail, width: dimensions?.width ?? null, height: dimensions?.height ?? null })
     }
 
     const timeout = window.setTimeout(() => finish(null), 10_000)
@@ -57,6 +64,7 @@ function captureVideoFrame(file: File): Promise<Blob | null> {
       finish(null)
     }
     video.onloadedmetadata = () => {
+      dimensions = { width: video.videoWidth, height: video.videoHeight }
       const duration = Number.isFinite(video.duration) ? video.duration : 0
       video.currentTime = Math.min(1, Math.max(0, duration / 10))
     }
@@ -80,8 +88,8 @@ export default function UploadPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
-  const [thumbnailPromise, setThumbnailPromise] = useState<Promise<Blob | null>>(
-    () => Promise.resolve(null)
+  const [metadataPromise, setMetadataPromise] = useState<Promise<VideoFrameResult>>(
+    () => Promise.resolve({ thumbnail: null, width: null, height: null })
   )
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -101,7 +109,7 @@ export default function UploadPage() {
       setFileError("Please select a valid video file (mp4, mov, webm, mkv, mpeg).")
       setFile(null)
       setPreviewUrl(null)
-      setThumbnailPromise(Promise.resolve(null))
+      setMetadataPromise(Promise.resolve({ thumbnail: null, width: null, height: null }))
       return
     }
 
@@ -109,7 +117,7 @@ export default function UploadPage() {
       setFileError("File is too large. Maximum size is 500MB.")
       setFile(null)
       setPreviewUrl(null)
-      setThumbnailPromise(Promise.resolve(null))
+      setMetadataPromise(Promise.resolve({ thumbnail: null, width: null, height: null }))
       return
     }
 
@@ -119,7 +127,7 @@ export default function UploadPage() {
       if (current) URL.revokeObjectURL(current)
       return URL.createObjectURL(selected)
     })
-    setThumbnailPromise(captureVideoFrame(selected))
+    setMetadataPromise(captureVideoFrame(selected))
   }
 
   function clearFile() {
@@ -129,7 +137,7 @@ export default function UploadPage() {
       return null
     })
     setFileError(null)
-    setThumbnailPromise(Promise.resolve(null))
+    setMetadataPromise(Promise.resolve({ thumbnail: null, width: null, height: null }))
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
@@ -188,7 +196,7 @@ export default function UploadPage() {
 
       await putToR2(presign.uploadUrl, file)
 
-      const thumbnail = await thumbnailPromise
+      const { thumbnail, width, height } = await metadataPromise
       if (thumbnail) {
         const thumbnailPresignRes = await fetch("/api/videos/upload-url", {
           method: "POST",
@@ -224,6 +232,8 @@ export default function UploadPage() {
           thumbnailKey,
           title: values.title,
           description: values.description || undefined,
+          width: width ?? undefined,
+          height: height ?? undefined,
         }),
       })
       if (!finalizeRes.ok) {

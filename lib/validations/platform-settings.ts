@@ -24,6 +24,37 @@ export const platformSettingsSchema = z
 
 export type PlatformSettingsInput = z.infer<typeof platformSettingsSchema>
 
+// Per-platform: YouTube requires a description, everything else requires a
+// caption (see PLATFORMS_WITH_DESCRIPTION below) — enforced both on the
+// client (so Save itself blocks an empty required field) and again in the
+// savePlatformSettings server action, since publish-readiness depends on it.
+export function platformSettingsSchemaFor(platform: Platform) {
+  const requiresDescription = PLATFORMS_WITH_DESCRIPTION.includes(platform)
+  const field = requiresDescription ? "description" : "caption"
+  const label = requiresDescription ? "Description" : "Caption"
+
+  return platformSettingsSchema.refine(
+    (data) => Boolean(data[field].trim()),
+    { message: `${label} is required`, path: [field] }
+  )
+}
+
+// Aspect ratios each platform's short-form video surface (Shorts/TikTok
+// feed/Reels) actually accepts without letterboxing or a forced crop. Not
+// persisted — purely a reference/pre-export check for the creator, since the
+// video file itself is uploaded once and shared across every platform tab.
+export const ASPECT_RATIOS = ["9:16", "1:1", "4:5", "16:9"] as const
+export type AspectRatio = (typeof ASPECT_RATIOS)[number]
+
+export const DEFAULT_ASPECT_RATIO: AspectRatio = "9:16"
+
+export const aspectRatiosByPlatform: Record<Platform, AspectRatio[]> = {
+  YOUTUBE: ["9:16", "16:9", "1:1"],
+  TIKTOK: ["9:16", "1:1", "16:9"],
+  INSTAGRAM: ["9:16", "4:5", "1:1"],
+  FACEBOOK: ["9:16", "4:5", "1:1"],
+}
+
 // Real-world constraint: only YouTube has a separate long-form description
 // field — it has no "caption" concept at all, so its tab uses description in
 // place of caption everywhere (required-field checks, tags label, etc).

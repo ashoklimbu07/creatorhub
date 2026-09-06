@@ -35,13 +35,13 @@ export function VideoCard({
   return (
     <Link href={href}>
       <Card className="overflow-hidden py-0 transition-colors hover:bg-muted/50">
-        <div className="flex aspect-video items-center justify-center bg-muted">
+        <div className="relative aspect-video overflow-hidden bg-muted">
           {previewUrl && previewType === "image" ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={previewUrl}
               alt={video.title}
-              className="size-full object-cover"
+              className="absolute inset-0 size-full object-cover"
             />
           ) : previewUrl ? (
             <video
@@ -50,10 +50,12 @@ export function VideoCard({
               playsInline
               preload="metadata"
               aria-label={`${video.title} preview`}
-              className="size-full object-cover"
+              className="absolute inset-0 size-full object-cover"
             />
           ) : (
-            <FileVideo className="size-8 text-muted-foreground" />
+            <div className="flex size-full items-center justify-center">
+              <FileVideo className="size-8 text-muted-foreground" />
+            </div>
           )}
         </div>
         <CardContent className="flex flex-col gap-2 px-4 pb-4 pt-3">

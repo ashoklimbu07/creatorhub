@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getSignedVideoUrl } from "@/lib/storage"
 import { platformServices } from "@/services/platforms"
 import {
-  platformSettingsSchema,
+  platformSettingsSchemaFor,
   isPlatformSettingsComplete,
   PLATFORMS_WITH_DESCRIPTION,
   type PlatformSettingsInput,
@@ -45,7 +45,7 @@ export async function savePlatformSettings(
   const userId = await requireUserId()
   await requireOwnedVideo(videoId, userId)
 
-  const parsed = platformSettingsSchema.parse(data)
+  const parsed = platformSettingsSchemaFor(platform).parse(data)
 
   await prisma.platformSettings.upsert({
     where: { videoId_platform: { videoId, platform } },
@@ -77,6 +77,22 @@ export async function savePlatformSettings(
   })
 
   revalidatePath("/dashboard/drafts")
+}
+
+// Backfill for videos uploaded before dimensions were captured at upload
+// time (see app/(dashboard)/dashboard/upload/page.tsx). The drafts page
+// detects width/height client-side from the <video> element when the DB
+// doesn't have them yet, then calls this once so every later load — and any
+// server-side publish check — can read them straight from the row instead
+// of re-detecting.
+export async function saveVideoDimensions(videoId: string, width: number, height: number) {
+  const userId = await requireUserId()
+  await requireOwnedVideo(videoId, userId)
+
+  await prisma.video.update({
+    where: { id: videoId },
+    data: { width, height },
+  })
 }
 
 export async function startPublishBatch(videoId: string, platforms: Platform[]) {

@@ -3,8 +3,19 @@ import { deleteFile, listVideoObjects } from "@/lib/storage"
 
 const THRESHOLD_BYTES = 9 * 1000 * 1000 * 1000 // 9 GB
 
+// Cloudflare R2 free tier limit for the bucket, account-wide (not per-user).
+export const STORAGE_LIMIT_BYTES = 10 * 1000 * 1000 * 1000 // 10 GB
+
 export function gb(bytes: number): string {
   return (bytes / 1_000_000_000).toFixed(2)
+}
+
+// Cheap approximation of bucket-wide usage for display purposes: sums the
+// sizeBytes recorded from R2 at finalize time instead of calling R2's List
+// API on every page load. Excludes thumbnails (negligible, a few KB each).
+export async function getStorageUsageBytes(): Promise<number> {
+  const result = await prisma.video.aggregate({ _sum: { sizeBytes: true } })
+  return Number(result._sum.sizeBytes ?? BigInt(0))
 }
 
 export type QuotaResult = {

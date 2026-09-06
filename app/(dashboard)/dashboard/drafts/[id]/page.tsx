@@ -6,15 +6,9 @@ import { prisma } from "@/lib/prisma"
 import { getSignedVideoUrl } from "@/lib/storage"
 import { formatFileSize } from "@/lib/utils"
 import { platformServices } from "@/services/platforms"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { VideoStatusBadge } from "@/components/shared/video-status-badge"
 import { DeleteDraftButton } from "@/components/shared/delete-draft-button"
-import { PlatformSettingsTabs } from "@/components/shared/platform-settings-tabs"
+import { VideoWorkspace } from "@/components/shared/video-workspace"
 import { PublishPanel } from "@/components/shared/publish-panel"
 
 const ALL_PLATFORMS: Platform[] = ["YOUTUBE", "TIKTOK", "INSTAGRAM", "FACEBOOK"]
@@ -85,25 +79,16 @@ export default async function DraftDetailPage({
         </div>
       </div>
 
-      <Card className="overflow-hidden py-0">
-        <video
-          src={videoUrl}
-          controls
-          className="aspect-video w-full bg-black"
-        />
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Platform settings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PlatformSettingsTabs
-            videoId={video.id}
-            settingsByPlatform={settingsByPlatform}
-          />
-        </CardContent>
-      </Card>
+      <VideoWorkspace
+        videoId={video.id}
+        videoUrl={videoUrl}
+        settingsByPlatform={settingsByPlatform}
+        initialDimensions={
+          video.width && video.height
+            ? { width: video.width, height: video.height }
+            : null
+        }
+      />
     </div>
   )
 }

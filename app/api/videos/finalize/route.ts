@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const { key, thumbnailKey, title, description } = parsed.data
+  const { key, thumbnailKey, title, description, width, height } = parsed.data
 
   // Keys are minted per-user in createUploadUrl (videos/{userId}/{uuid}{ext});
   // reject anything that doesn't belong to the caller before touching R2.
@@ -62,6 +62,8 @@ export async function POST(request: Request) {
       fileUrl: key,
       thumbnailUrl: thumbnailKey ?? null,
       sizeBytes: BigInt(size),
+      width: width ?? null,
+      height: height ?? null,
       status: "DRAFT",
       draft: {
         create: {},
