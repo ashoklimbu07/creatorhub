@@ -57,8 +57,8 @@ class YouTubeService implements PlatformService {
     try {
       const tokens = await exchangeCodeForTokens(code)
 
-      const existing = await prisma.platformConnection.findUnique({
-        where: { userId_platform: { userId, platform: "YOUTUBE" } },
+      const existing = await prisma.platformConnection.findFirst({
+        where: { userId, platform: "YOUTUBE" },
       })
 
       // Google only issues a refresh_token on the first consent for a given
@@ -69,27 +69,33 @@ class YouTubeService implements PlatformService {
 
       const channel = await fetchOwnChannel(tokens.accessToken)
 
-      await prisma.platformConnection.upsert({
-        where: { userId_platform: { userId, platform: "YOUTUBE" } },
-        create: {
-          userId,
-          platform: "YOUTUBE",
-          accessToken: encrypt(tokens.accessToken),
-          refreshToken: encrypt(tokens.refreshToken!),
-          expiresAt: tokens.expiresAt,
-          externalAccountId: channel.id,
-          externalAccountName: channel.title,
-          externalAccountThumbnail: channel.thumbnailUrl,
-        },
-        update: {
-          accessToken: encrypt(tokens.accessToken),
-          ...(tokens.refreshToken ? { refreshToken: encrypt(tokens.refreshToken) } : {}),
-          expiresAt: tokens.expiresAt,
-          externalAccountId: channel.id,
-          externalAccountName: channel.title,
-          externalAccountThumbnail: channel.thumbnailUrl,
-        },
-      })
+      if (existing) {
+        await prisma.platformConnection.update({
+          where: { id: existing.id },
+          data: {
+            accessToken: encrypt(tokens.accessToken),
+            ...(tokens.refreshToken ? { refreshToken: encrypt(tokens.refreshToken) } : {}),
+            expiresAt: tokens.expiresAt,
+            externalAccountId: channel.id,
+            externalAccountName: channel.title,
+            externalAccountThumbnail: channel.thumbnailUrl,
+          },
+        })
+      } else {
+        await prisma.platformConnection.create({
+          data: {
+            userId,
+            platform: "YOUTUBE",
+            isDefault: true,
+            accessToken: encrypt(tokens.accessToken),
+            refreshToken: encrypt(tokens.refreshToken!),
+            expiresAt: tokens.expiresAt,
+            externalAccountId: channel.id,
+            externalAccountName: channel.title,
+            externalAccountThumbnail: channel.thumbnailUrl,
+          },
+        })
+      }
 
       return { success: true }
     } catch (error) {
@@ -99,15 +105,15 @@ class YouTubeService implements PlatformService {
   }
 
   async isConnected(userId: string): Promise<boolean> {
-    const connection = await prisma.platformConnection.findUnique({
-      where: { userId_platform: { userId, platform: "YOUTUBE" } },
+    const connection = await prisma.platformConnection.findFirst({
+      where: { userId, platform: "YOUTUBE" },
     })
     return connection !== null
   }
 
   async disconnect(userId: string): Promise<void> {
-    const connection = await prisma.platformConnection.findUnique({
-      where: { userId_platform: { userId, platform: "YOUTUBE" } },
+    const connection = await prisma.platformConnection.findFirst({
+      where: { userId, platform: "YOUTUBE" },
     })
     if (!connection) return
 
@@ -122,8 +128,8 @@ class YouTubeService implements PlatformService {
 
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
-      const connection = await prisma.platformConnection.findUnique({
-        where: { userId_platform: { userId: input.userId, platform: "YOUTUBE" } },
+      const connection = await prisma.platformConnection.findFirst({
+        where: { userId: input.userId, platform: "YOUTUBE" },
       })
 
       if (!connection) {

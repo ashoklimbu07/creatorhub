@@ -58,9 +58,11 @@ type ResultState = {
 export function PublishPanel({
   videoId,
   settingsByPlatform,
+  connectedPlatforms,
 }: {
   videoId: string
   settingsByPlatform: Record<Platform, PlatformSettings | null>
+  connectedPlatforms: Platform[]
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -69,10 +71,18 @@ export function PublishPanel({
   const [results, setResults] = useState<Partial<Record<Platform, ResultState>>>({})
   const [retryTick, setRetryTick] = useState<Partial<Record<Platform, number>>>({})
 
-  const eligiblePlatforms = ALL_PLATFORMS.filter((platform) =>
+  // "Eligible" requires both a filled-in tab AND an actually-connected
+  // account — a tab can stay filled in after the platform was disconnected,
+  // and we never want the confirm dialog to claim it'll publish somewhere
+  // it can't.
+  const settingsComplete = ALL_PLATFORMS.filter((platform) =>
     isPlatformSettingsComplete(platform, settingsByPlatform[platform])
   )
-  const notEligible = ALL_PLATFORMS.filter((p) => !eligiblePlatforms.includes(p))
+  const eligiblePlatforms = settingsComplete.filter((platform) =>
+    connectedPlatforms.includes(platform)
+  )
+  const incomplete = ALL_PLATFORMS.filter((p) => !settingsComplete.includes(p))
+  const disconnected = settingsComplete.filter((p) => !connectedPlatforms.includes(p))
   const isPublishing = batch.some((p) => {
     const status = results[p]?.status
     return status === "pending" || status === "publishing"
@@ -170,13 +180,15 @@ export function PublishPanel({
               <DialogHeader>
                 <DialogTitle>Publish this video?</DialogTitle>
                 <DialogDescription>
-                  {eligiblePlatforms.length === 0
-                    ? "No platforms are ready yet — fill in a title and caption (or description for YouTube) on at least one tab."
-                    : "These platforms are filled in and will be published:"}
+                  {eligiblePlatforms.length > 0
+                    ? "These platforms are filled in and will be published:"
+                    : disconnected.length > 0
+                      ? "The filled-in platforms below aren't connected — connect one from the Accounts page first."
+                      : "No platforms are ready yet — fill in a title and caption (or description for YouTube) on at least one tab."}
                 </DialogDescription>
               </DialogHeader>
 
-              {eligiblePlatforms.length > 0 && (
+              {(eligiblePlatforms.length > 0 || disconnected.length > 0) && (
                 <div className="flex flex-col gap-2">
                   {eligiblePlatforms.map((platform) => {
                     const Icon = PLATFORM_ICONS[platform]
@@ -190,10 +202,16 @@ export function PublishPanel({
                       </div>
                     )
                   })}
-                  {notEligible.length > 0 && (
+                  {incomplete.length > 0 && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Skipping {notEligible.map((p) => platformLabels[p]).join(", ")}{" "}
+                      Skipping {incomplete.map((p) => platformLabels[p]).join(", ")}{" "}
                       — incomplete tab.
+                    </p>
+                  )}
+                  {disconnected.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Skipping {disconnected.map((p) => platformLabels[p]).join(", ")}{" "}
+                      — not connected. Connect it from the Accounts page first.
                     </p>
                   )}
                 </div>

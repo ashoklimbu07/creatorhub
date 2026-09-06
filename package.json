@@ -6,12 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "postinstall": "prisma generate",
     "lint": "eslint",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "storage:enforce-quota": "tsx scripts/enforce-storage-quota.ts"
+    "storage:enforce-quota": "tsx scripts/enforce-storage-quota.ts",
+    "storage:configure-cors": "tsx scripts/configure-r2-cors.ts",
+    "platforms:refresh-instagram-tokens": "tsx scripts/refresh-instagram-tokens.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
