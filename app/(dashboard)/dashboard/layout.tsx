@@ -3,17 +3,14 @@ import { redirect } from "next/navigation"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/shared/app-sidebar"
 import { DashboardTopbar } from "@/components/shared/dashboard-topbar"
-import { createClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/auth"
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     redirect("/login")

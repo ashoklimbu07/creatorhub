@@ -26,7 +26,7 @@ export async function enforceStorageQuota(): Promise<QuotaResult> {
 
   const videos = await prisma.video.findMany({
     orderBy: { createdAt: "asc" },
-    select: { id: true, title: true, fileUrl: true, createdAt: true },
+    select: { id: true, title: true, fileUrl: true, thumbnailUrl: true, createdAt: true },
   })
 
   let remaining = usageBytes
@@ -38,10 +38,15 @@ export async function enforceStorageQuota(): Promise<QuotaResult> {
     const objectSize = sizeByKey.get(video.fileUrl) ?? 0
 
     await prisma.video.delete({ where: { id: video.id } })
-    try {
-      await deleteFile(video.fileUrl)
-    } catch (err) {
-      console.error(`[storage-quota] failed to delete R2 object ${video.fileUrl}:`, err)
+    const storedFiles = [
+      video.fileUrl,
+      ...(video.thumbnailUrl && !/^https?:\/\//i.test(video.thumbnailUrl)
+        ? [video.thumbnailUrl]
+        : []),
+    ]
+    const deletionResults = await Promise.allSettled(storedFiles.map(deleteFile))
+    if (deletionResults.some((result) => result.status === "rejected")) {
+      console.error(`[storage-quota] failed to delete one or more R2 objects for ${video.fileUrl}`)
     }
 
     remaining -= objectSize

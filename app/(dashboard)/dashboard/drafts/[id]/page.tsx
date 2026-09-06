@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation"
 import type { Platform, PlatformSettings } from "@prisma/client"
 
-import { createClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getSignedVideoUrl } from "@/lib/storage"
 import { formatFileSize } from "@/lib/utils"
@@ -26,10 +26,7 @@ export default async function DraftDetailPage({
 }) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     redirect("/login")

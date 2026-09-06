@@ -34,10 +34,55 @@ import {
 } from "@/lib/validations/video"
 import { formatFileSize } from "@/lib/utils"
 
+function captureVideoFrame(file: File): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video")
+    const objectUrl = URL.createObjectURL(file)
+    let settled = false
+
+    function finish(blob: Blob | null) {
+      if (settled) return
+      settled = true
+      URL.revokeObjectURL(objectUrl)
+      video.remove()
+      resolve(blob)
+    }
+
+    const timeout = window.setTimeout(() => finish(null), 10_000)
+    video.muted = true
+    video.preload = "metadata"
+    video.playsInline = true
+    video.onerror = () => {
+      window.clearTimeout(timeout)
+      finish(null)
+    }
+    video.onloadedmetadata = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : 0
+      video.currentTime = Math.min(1, Math.max(0, duration / 10))
+    }
+    video.onseeked = () => {
+      window.clearTimeout(timeout)
+      const maxWidth = 640
+      const scale = Math.min(1, maxWidth / video.videoWidth)
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
+      const context = canvas.getContext("2d")
+      if (!context) return finish(null)
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob((blob) => finish(blob), "image/jpeg", 0.82)
+    }
+    video.src = objectUrl
+  })
+}
+
 export default function UploadPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
+  const [thumbnailPromise, setThumbnailPromise] = useState<Promise<Blob | null>>(
+    () => Promise.resolve(null)
+  )
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -56,6 +101,7 @@ export default function UploadPage() {
       setFileError("Please select a valid video file (mp4, mov, webm, mkv, mpeg).")
       setFile(null)
       setPreviewUrl(null)
+      setThumbnailPromise(Promise.resolve(null))
       return
     }
 
@@ -63,18 +109,27 @@ export default function UploadPage() {
       setFileError("File is too large. Maximum size is 500MB.")
       setFile(null)
       setPreviewUrl(null)
+      setThumbnailPromise(Promise.resolve(null))
       return
     }
 
     setFileError(null)
     setFile(selected)
-    setPreviewUrl(URL.createObjectURL(selected))
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current)
+      return URL.createObjectURL(selected)
+    })
+    setThumbnailPromise(captureVideoFrame(selected))
   }
 
   function clearFile() {
     setFile(null)
-    setPreviewUrl(null)
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current)
+      return null
+    })
     setFileError(null)
+    setThumbnailPromise(Promise.resolve(null))
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
@@ -113,6 +168,7 @@ export default function UploadPage() {
     // handlers, so the browser uploads straight to R2 with a presigned URL
     // instead of proxying the bytes through Next.js.
     let key: string | undefined
+    let thumbnailKey: string | undefined
     try {
       const presignRes = await fetch("/api/videos/upload-url", {
         method: "POST",
@@ -132,11 +188,40 @@ export default function UploadPage() {
 
       await putToR2(presign.uploadUrl, file)
 
+      const thumbnail = await thumbnailPromise
+      if (thumbnail) {
+        const thumbnailPresignRes = await fetch("/api/videos/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assetType: "thumbnail",
+            fileName: "thumbnail.jpg",
+            fileType: "image/jpeg",
+            fileSize: thumbnail.size,
+          }),
+        })
+        if (thumbnailPresignRes.ok) {
+          const thumbnailPresign = (await thumbnailPresignRes.json()) as {
+            uploadUrl: string
+            key: string
+          }
+          const thumbnailUploadRes = await fetch(thumbnailPresign.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": "image/jpeg" },
+            body: thumbnail,
+          })
+          if (thumbnailUploadRes.ok) {
+            thumbnailKey = thumbnailPresign.key
+          }
+        }
+      }
+
       const finalizeRes = await fetch("/api/videos/finalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           key: presign.key,
+          thumbnailKey,
           title: values.title,
           description: values.description || undefined,
         }),
@@ -158,7 +243,7 @@ export default function UploadPage() {
         fetch("/api/videos/finalize", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key }),
+          body: JSON.stringify({ key, thumbnailKey }),
         }).catch(() => {})
       }
     }

@@ -47,6 +47,20 @@ export async function createUploadUrl(
   return { uploadUrl, key }
 }
 
+export async function createThumbnailUploadUrl(
+  userId: string,
+  expiresIn = 900
+): Promise<PresignedUpload> {
+  const key = `thumbnails/${userId}/${crypto.randomUUID()}.jpg`
+  const uploadUrl = await getSignedUrl(
+    s3,
+    new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: "image/jpeg" }),
+    { expiresIn }
+  )
+
+  return { uploadUrl, key }
+}
+
 // Confirms the browser's direct-to-R2 upload actually landed and returns the
 // real object size — the client-reported size is never trusted for billing
 // or quota accounting. Returns null if the object doesn't exist (upload
@@ -68,6 +82,11 @@ export async function getSignedVideoUrl(
   return getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), {
     expiresIn,
   })
+}
+
+export async function getSignedAssetUrl(value: string, expiresIn = 3600): Promise<string> {
+  if (/^https?:\/\//i.test(value)) return value
+  return getSignedVideoUrl(value, expiresIn)
 }
 
 export async function deleteFile(key: string): Promise<void> {

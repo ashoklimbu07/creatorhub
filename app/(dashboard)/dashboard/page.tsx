@@ -4,30 +4,18 @@ import { redirect } from "next/navigation"
 import { UploadCloud } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { createClient } from "@/lib/supabase/server"
-import { prisma } from "@/lib/prisma"
-import { getPlatformConnectionsSummary } from "@/lib/platform-connections"
+import { getCurrentUser } from "@/lib/auth"
 import { RecentUploads } from "@/components/shared/recent-uploads"
 import { RecentUploadsSkeleton } from "@/components/shared/recent-uploads-skeleton"
-import { ConnectedAccounts } from "@/components/shared/connected-accounts"
+import { DashboardConnectedAccounts } from "@/components/shared/dashboard-connected-accounts"
+import { ConnectedAccountsSkeleton } from "@/components/shared/connected-accounts-skeleton"
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     redirect("/login")
   }
-
-  const [dbUser, summary] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: user.id },
-      select: { connectedPlatforms: true },
-    }),
-    getPlatformConnectionsSummary(user.id),
-  ])
 
   return (
     <div className="flex flex-col gap-8">
@@ -55,11 +43,9 @@ export default async function DashboardPage() {
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Connected accounts</h2>
-        <ConnectedAccounts
-          initialConnected={dbUser?.connectedPlatforms ?? []}
-          connections={summary.singleConnections}
-          facebookConnections={summary.facebook.connections}
-        />
+        <Suspense fallback={<ConnectedAccountsSkeleton />}>
+          <DashboardConnectedAccounts userId={user.id} />
+        </Suspense>
       </section>
     </div>
   )

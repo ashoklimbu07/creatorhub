@@ -26,6 +26,14 @@ export const uploadUrlRequestSchema = z.object({
     .max(MAX_VIDEO_SIZE_BYTES, "File is too large. Maximum size is 500MB."),
 })
 
+export const thumbnailUploadUrlRequestSchema = z.object({
+  assetType: z.literal("thumbnail"),
+  fileName: z.string().min(1),
+  fileType: z.literal("image/jpeg"),
+  fileSize: z.number().int().positive().max(2 * 1024 * 1024, "Thumbnail is too large."),
+})
+
 export const finalizeUploadSchema = videoMetadataSchema.extend({
   key: z.string().min(1),
+  thumbnailKey: z.string().min(1).optional(),
 })

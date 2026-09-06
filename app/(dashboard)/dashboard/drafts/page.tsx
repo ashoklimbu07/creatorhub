@@ -2,8 +2,9 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { FileVideo } from "lucide-react"
 
-import { createClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { getSignedAssetUrl, getSignedVideoUrl } from "@/lib/storage"
 import { formatFileSize } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -11,10 +12,7 @@ import { VideoStatusBadge } from "@/components/shared/video-status-badge"
 import { DeleteDraftButton } from "@/components/shared/delete-draft-button"
 
 export default async function DraftsPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     redirect("/login")
@@ -26,6 +24,16 @@ export default async function DraftsPage() {
     include: { video: true },
   })
 
+  const draftsWithPreviews = await Promise.all(
+    drafts.map(async (draft) => ({
+      ...draft,
+      previewUrl: draft.video.thumbnailUrl
+        ? await getSignedAssetUrl(draft.video.thumbnailUrl)
+        : `${await getSignedVideoUrl(draft.video.fileUrl)}#t=0.1`,
+      previewType: draft.video.thumbnailUrl ? ("image" as const) : ("video" as const),
+    }))
+  )
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -35,7 +43,7 @@ export default async function DraftsPage() {
         </p>
       </div>
 
-      {drafts.length === 0 ? (
+      {draftsWithPreviews.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center">
           <FileVideo className="size-8 text-muted-foreground" />
           <p className="text-sm font-medium">No drafts yet</p>
@@ -48,19 +56,26 @@ export default async function DraftsPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {drafts.map((draft) => (
+          {draftsWithPreviews.map((draft) => (
             <Card key={draft.id}>
               <CardContent className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center">
                 <div className="flex h-16 w-28 shrink-0 items-center justify-center rounded-md bg-muted">
-                  {draft.video.thumbnailUrl ? (
+                  {draft.previewType === "image" ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={draft.video.thumbnailUrl}
+                      src={draft.previewUrl}
                       alt={draft.video.title}
                       className="size-full rounded-md object-cover"
                     />
                   ) : (
-                    <FileVideo className="size-6 text-muted-foreground" />
+                    <video
+                      src={draft.previewUrl}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      aria-label={`${draft.video.title} preview`}
+                      className="size-full rounded-md object-cover"
+                    />
                   )}
                 </div>
 

@@ -2,7 +2,15 @@
 
 import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { PlaySquare, Music2, Camera, ThumbsUp, LoaderCircle } from "lucide-react"
+import {
+  PlaySquare,
+  Music2,
+  Camera,
+  ThumbsUp,
+  LoaderCircle,
+  ChevronDown,
+  CheckCircle2,
+} from "lucide-react"
 import { toast } from "sonner"
 import type { Platform } from "@prisma/client"
 
@@ -13,7 +21,6 @@ import { cn } from "@/lib/utils"
 import {
   connectPlatform,
   disconnectPlatform,
-  connectFacebookPages,
   disconnectFacebookPage,
   setDefaultFacebookPage,
 } from "@/app/(dashboard)/dashboard/accounts/actions"
@@ -60,27 +67,16 @@ export type FacebookPageConnectionInfo = {
   isDefault: boolean
 }
 
-export type PendingFacebookPage = {
-  id: string
-  name: string
-  picture: string | null
-  alreadyConnected: boolean
-}
-
 export function ConnectedAccounts({
   initialConnected,
   connections,
   facebookConnections = [],
-  pendingFacebookPages,
-  manageFacebook = false,
   callbackConnected,
   callbackError,
 }: {
   initialConnected: Platform[]
   connections?: Partial<Record<Exclude<Platform, "FACEBOOK">, PlatformConnectionInfo>>
   facebookConnections?: FacebookPageConnectionInfo[]
-  pendingFacebookPages?: PendingFacebookPage[] | null
-  manageFacebook?: boolean
   callbackConnected?: string
   callbackError?: string
 }) {
@@ -88,8 +84,8 @@ export function ConnectedAccounts({
   const [isPending, startTransition] = useTransition()
   const [activeAction, setActiveAction] = useState<string | null>(null)
   const [connectingPlatform, setConnectingPlatform] = useState<Platform | null>(null)
+  const [facebookExpanded, setFacebookExpanded] = useState(callbackConnected === "FACEBOOK")
   const isBusy = isPending || connectingPlatform !== null
-  const [selectedPageIds, setSelectedPageIds] = useState<string[]>([])
   const connectedSet = new Set(initialConnected)
 
   const defaultFacebookPage =
@@ -110,7 +106,11 @@ export function ConnectedAccounts({
 
   useEffect(() => {
     if (callbackConnected) {
-      toast.success(`${platformLabel(callbackConnected)} connected`)
+      toast.success(
+        callbackConnected === "FACEBOOK"
+          ? `${facebookConnections.length} Facebook ${facebookConnections.length === 1 ? "Page" : "Pages"} connected`
+          : `${platformLabel(callbackConnected)} connected`
+      )
       router.replace("/dashboard/accounts")
     } else if (callbackError === "FACEBOOK_NO_PAGES") {
       toast.error(
@@ -145,31 +145,12 @@ export function ConnectedAccounts({
     })
   }
 
-  function toggleSelectedPage(pageId: string) {
-    setSelectedPageIds((current) =>
-      current.includes(pageId) ? current.filter((id) => id !== pageId) : [...current, pageId]
-    )
-  }
-
-  function handleConnectSelectedPages() {
-    setActiveAction("connect:pages")
-    startTransition(async () => {
-      try {
-        await connectFacebookPages(selectedPageIds)
-        toast.success(`${selectedPageIds.length} Facebook Page(s) connected`)
-        setSelectedPageIds([])
-        router.refresh()
-      } catch {
-        toast.error("Failed to connect the selected Page(s)")
-      }
-    })
-  }
-
   function handleSetDefaultPage(connectionId: string) {
     setActiveAction(`default:${connectionId}`)
     startTransition(async () => {
       try {
         await setDefaultFacebookPage(connectionId)
+        toast.success("Default Facebook Page updated")
         router.refresh()
       } catch {
         toast.error("Failed to set that Page as default")
@@ -256,61 +237,116 @@ export function ConnectedAccounts({
           )
         })}
 
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 px-4 py-5 text-center">
-            {defaultFacebookPage?.thumbnailUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={defaultFacebookPage.thumbnailUrl}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="size-6 rounded-full"
-              />
-            ) : (
-              <ThumbsUp
-                className={cn(
-                  "size-6",
-                  defaultFacebookPage ? "text-primary" : "text-muted-foreground"
-                )}
-              />
-            )}
-            <div className="flex flex-col items-center gap-1">
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-medium">Facebook</p>
-                {facebookConnections.length > 1 && (
-                  <Badge variant="secondary">+{facebookConnections.length - 1} more</Badge>
-                )}
+        <Card className={cn(defaultFacebookPage && "ring-primary/20")}>
+          <CardContent className="flex flex-col gap-3 px-4 py-5 text-center">
+            <button
+              type="button"
+              disabled={!defaultFacebookPage}
+              aria-expanded={facebookExpanded}
+              aria-controls="facebook-page-list"
+              onClick={() => setFacebookExpanded((current) => !current)}
+              className="flex w-full flex-col items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-default"
+            >
+              {defaultFacebookPage?.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={defaultFacebookPage.thumbnailUrl}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="size-7 rounded-full"
+                />
+              ) : (
+                <ThumbsUp
+                  className={cn(
+                    "size-6",
+                    defaultFacebookPage ? "text-primary" : "text-muted-foreground"
+                  )}
+                />
+              )}
+              <div className="min-w-0">
+                <div className="flex items-center justify-center gap-1.5">
+                  <p className="text-sm font-medium">Facebook</p>
+                  {defaultFacebookPage && (
+                    <CheckCircle2 className="size-3.5 text-emerald-600" aria-label="Connected" />
+                  )}
+                </div>
+                <p className="truncate text-xs text-muted-foreground">
+                  {defaultFacebookPage
+                    ? `${facebookConnections.length} ${facebookConnections.length === 1 ? "Page" : "Pages"} connected`
+                    : "Not connected"}
+                </p>
               </div>
-              <p className="truncate text-xs text-muted-foreground">
-                {defaultFacebookPage ? defaultFacebookPage.name : "Not connected"}
-              </p>
-            </div>
-            <Button type="button" size="sm" variant={defaultFacebookPage ? "outline" : "default"}
-              className="w-full" disabled={isBusy} aria-busy={connectingPlatform === "FACEBOOK"}
-              onClick={() => handleOAuthConnect("FACEBOOK")}>
-              <ActionLabel loading={connectingPlatform === "FACEBOOK"}
-                idle={defaultFacebookPage ? "Add a Page" : "Connect"} busy="Connecting…" />
-            </Button>
+              {defaultFacebookPage && (
+                <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                  View Pages
+                  <ChevronDown
+                    className={cn("size-3.5 transition-transform", facebookExpanded && "rotate-180")}
+                    aria-hidden="true"
+                  />
+                </span>
+              )}
+            </button>
+
+            {defaultFacebookPage ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full"
+                disabled={isBusy}
+                aria-busy={connectingPlatform === "FACEBOOK"}
+                onClick={() => handleOAuthConnect("FACEBOOK")}
+              >
+                <ActionLabel
+                  loading={connectingPlatform === "FACEBOOK"}
+                  idle="Add Page"
+                  busy="Connecting…"
+                />
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                className="w-full"
+                disabled={isBusy}
+                aria-busy={connectingPlatform === "FACEBOOK"}
+                onClick={() => handleOAuthConnect("FACEBOOK")}
+              >
+                <ActionLabel
+                  loading={connectingPlatform === "FACEBOOK"}
+                  idle="Connect"
+                  busy="Connecting…"
+                />
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {manageFacebook && facebookConnections.length > 0 && (
-        <Card>
-          <CardContent className="flex flex-col gap-3 px-4 py-5">
+      {facebookExpanded && facebookConnections.length > 0 && (
+        <Card id="facebook-page-list">
+          <CardContent className="flex flex-col gap-4 px-4 py-5">
             <div>
-              <p className="text-sm font-medium">Facebook Pages</p>
-              <p className="text-xs text-muted-foreground">
-                Videos publish to whichever Page is marked default.
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">Connected Facebook Pages</p>
+                  <Badge variant="secondary">{facebookConnections.length}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Pages selected on Facebook appear here automatically. Choose where videos publish by default.
+                </p>
+              </div>
             </div>
             <div className="flex flex-col gap-2">
               {facebookConnections.map((page) => (
                 <div
                   key={page.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border p-2"
+                  className={cn(
+                    "flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between",
+                    page.isDefault && "border-primary/30 bg-muted/40"
+                  )}
                 >
-                  <div className="flex items-center gap-2">
+                  <label className="flex min-w-0 cursor-pointer items-center gap-3">
                     <input
                       type="radio"
                       name="fb-default-page"
@@ -318,7 +354,7 @@ export function ConnectedAccounts({
                       checked={page.isDefault}
                       disabled={isBusy}
                       onChange={() => handleSetDefaultPage(page.id)}
-                      className="size-4 accent-primary"
+                      className="size-4 shrink-0 accent-primary"
                     />
                     {page.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -326,18 +362,26 @@ export function ConnectedAccounts({
                         src={page.thumbnailUrl}
                         alt=""
                         referrerPolicy="no-referrer"
-                        className="size-6 rounded-full"
+                        className="size-8 rounded-full"
                       />
                     ) : (
-                      <ThumbsUp className="size-5 text-muted-foreground" />
+                      <span className="flex size-8 items-center justify-center rounded-full bg-muted">
+                        <ThumbsUp className="size-4 text-muted-foreground" />
+                      </span>
                     )}
-                    <span className="text-sm">{page.name}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{page.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {page.isDefault ? "Default publishing Page" : "Connected"}
+                      </span>
+                    </span>
                     {page.isDefault && <Badge>Default</Badge>}
-                  </div>
+                  </label>
                   <Button
                     type="button"
                     size="xs"
-                    variant="outline"
+                    variant="destructive"
+                    className="self-end sm:self-auto"
                     disabled={isBusy}
                     aria-busy={isPending && activeAction === `disconnect:${page.id}`}
                     onClick={() => handleDisconnectPage(page.id)}
@@ -348,71 +392,6 @@ export function ConnectedAccounts({
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {pendingFacebookPages && pendingFacebookPages.length > 0 && (
-        <Card>
-          <CardContent className="flex flex-col gap-3 px-4 py-5">
-            <div>
-              <p className="text-sm font-medium">Choose Facebook Pages</p>
-              <p className="text-xs text-muted-foreground">
-                {pendingFacebookPages.length} {pendingFacebookPages.length === 1 ? "Page" : "Pages"} available.
-                {" "}Pick which Pages CreatorHub should be able to publish to.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              {pendingFacebookPages.map((page) => {
-                const isSelected = selectedPageIds.includes(page.id)
-                return (
-                  <label
-                    key={page.id}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg border p-2",
-                      page.alreadyConnected && "opacity-60"
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={page.alreadyConnected || isSelected}
-                      disabled={page.alreadyConnected || isBusy}
-                      onChange={() => toggleSelectedPage(page.id)}
-                      className="size-4 accent-primary"
-                    />
-                    {page.picture ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={page.picture}
-                        alt=""
-                        referrerPolicy="no-referrer"
-                        className="size-6 rounded-full"
-                      />
-                    ) : (
-                      <ThumbsUp className="size-5 text-muted-foreground" />
-                    )}
-                    <span className="flex-1 text-sm">{page.name}</span>
-                    {page.alreadyConnected ? (
-                      <Badge variant="secondary">Connected</Badge>
-                    ) : isSelected ? (
-                      <Badge>Selected</Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Not connected</span>
-                    )}
-                  </label>
-                )
-              })}
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              disabled={isBusy || selectedPageIds.length === 0}
-              aria-busy={isPending && activeAction === "connect:pages"}
-              onClick={handleConnectSelectedPages}
-            >
-              <ActionLabel loading={isPending && activeAction === "connect:pages"}
-                idle="Connect selected Pages" busy="Connecting…" />
-            </Button>
           </CardContent>
         </Card>
       )}

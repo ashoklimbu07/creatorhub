@@ -1,34 +1,29 @@
 import { redirect } from "next/navigation"
 
-import { createClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getPlatformConnectionsSummary } from "@/lib/platform-connections"
-import { facebookService } from "@/services/platforms/facebook.service"
 import { ConnectedAccounts } from "@/components/shared/connected-accounts"
 
 export default async function AccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ connected?: string; error?: string; fbPick?: string }>
+  searchParams: Promise<{ connected?: string; error?: string }>
 }) {
   const { connected, error } = await searchParams
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     redirect("/login")
   }
 
-  const [dbUser, summary, pendingFacebookPages] = await Promise.all([
+  const [dbUser, summary] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: { connectedPlatforms: true },
     }),
     getPlatformConnectionsSummary(user.id),
-    facebookService.getPendingPages(user.id),
   ])
 
   return (
@@ -43,8 +38,6 @@ export default async function AccountsPage({
         initialConnected={dbUser?.connectedPlatforms ?? []}
         connections={summary.singleConnections}
         facebookConnections={summary.facebook.connections}
-        pendingFacebookPages={pendingFacebookPages}
-        manageFacebook
         callbackConnected={connected}
         callbackError={error}
       />

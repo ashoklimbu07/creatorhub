@@ -51,13 +51,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Multiple Pages means the OAuth exchange succeeded but there's no
-  // PlatformConnection yet — send the user to the picker instead of
-  // flashing a premature "connected" toast.
-  if (await facebookService.hasPendingPages(user.id)) {
-    redirectUrl.searchParams.set("fbPick", "1")
-  } else {
-    redirectUrl.searchParams.set("connected", "FACEBOOK")
-  }
+  redirectUrl.searchParams.set("connected", "FACEBOOK")
   return NextResponse.redirect(redirectUrl)
 }

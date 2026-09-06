@@ -32,16 +32,6 @@ export async function disconnectPlatform(platform: Platform) {
   revalidatePath("/dashboard/accounts")
 }
 
-export async function connectFacebookPages(pageIds: string[]) {
-  const userId = await requireUserId()
-  const result = await facebookService.connectPages(userId, pageIds)
-  if (!result.success) {
-    throw new Error("Failed to connect the selected Page(s)")
-  }
-  revalidatePath("/dashboard/accounts")
-  revalidatePath("/dashboard")
-}
-
 export async function disconnectFacebookPage(connectionId: string) {
   const userId = await requireUserId()
   const result = await facebookService.disconnectPage(userId, connectionId)

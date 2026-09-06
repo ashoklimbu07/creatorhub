@@ -26,12 +26,16 @@ export async function POST(request: Request) {
     )
   }
 
-  const { key, title, description } = parsed.data
+  const { key, thumbnailKey, title, description } = parsed.data
 
   // Keys are minted per-user in createUploadUrl (videos/{userId}/{uuid}{ext});
   // reject anything that doesn't belong to the caller before touching R2.
   if (!key.startsWith(`videos/${user.id}/`)) {
     return NextResponse.json({ error: "Invalid upload key" }, { status: 403 })
+  }
+
+  if (thumbnailKey && !thumbnailKey.startsWith(`thumbnails/${user.id}/`)) {
+    return NextResponse.json({ error: "Invalid thumbnail key" }, { status: 403 })
   }
 
   const size = await getObjectSize(key)
@@ -42,12 +46,21 @@ export async function POST(request: Request) {
     )
   }
 
+
+  if (thumbnailKey && (await getObjectSize(thumbnailKey)) === null) {
+    return NextResponse.json(
+      { error: "Thumbnail upload did not complete. Please try again." },
+      { status: 400 }
+    )
+  }
+
   const video = await prisma.video.create({
     data: {
       userId: user.id,
       title,
       description: description ?? null,
       fileUrl: key,
+      thumbnailUrl: thumbnailKey ?? null,
       sizeBytes: BigInt(size),
       status: "DRAFT",
       draft: {
@@ -91,11 +104,15 @@ export async function DELETE(request: Request) {
 
   const body = await request.json().catch(() => null)
   const key = typeof body?.key === "string" ? body.key : null
+  const thumbnailKey = typeof body?.thumbnailKey === "string" ? body.thumbnailKey : null
 
   if (!key || !key.startsWith(`videos/${user.id}/`)) {
     return NextResponse.json({ error: "Invalid upload key" }, { status: 403 })
   }
 
   await deleteFile(key)
+  if (thumbnailKey?.startsWith(`thumbnails/${user.id}/`)) {
+    await deleteFile(thumbnailKey)
+  }
   return NextResponse.json({ ok: true })
 }
