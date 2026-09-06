@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
 import { getSignedVideoUrl } from "@/lib/storage"
 import { formatFileSize } from "@/lib/utils"
+import { platformServices } from "@/services/platforms"
 import {
   Card,
   CardContent,
@@ -34,14 +35,21 @@ export default async function DraftDetailPage({
     redirect("/login")
   }
 
-  const draft = await prisma.draft.findUnique({
-    where: { id },
-    include: { video: { include: { platformSettings: true } } },
-  })
+  const [draft, connectedFlags] = await Promise.all([
+    prisma.draft.findUnique({
+      where: { id },
+      include: { video: { include: { platformSettings: true } } },
+    }),
+    Promise.all(
+      ALL_PLATFORMS.map((platform) => platformServices[platform].isConnected(user.id))
+    ),
+  ])
 
   if (!draft || draft.video.userId !== user.id) {
     notFound()
   }
+
+  const connectedPlatforms = ALL_PLATFORMS.filter((_, i) => connectedFlags[i])
 
   const { video } = draft
   const videoUrl = await getSignedVideoUrl(video.fileUrl)
@@ -71,7 +79,11 @@ export default async function DraftDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <PublishPanel videoId={video.id} settingsByPlatform={settingsByPlatform} />
+          <PublishPanel
+            videoId={video.id}
+            settingsByPlatform={settingsByPlatform}
+            connectedPlatforms={connectedPlatforms}
+          />
           <DeleteDraftButton videoId={video.id} redirectTo="/dashboard/drafts" />
         </div>
       </div>

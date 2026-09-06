@@ -44,6 +44,14 @@ export const hashtagsFieldLabel: Record<Platform, string> = {
   FACEBOOK: "Hashtags",
 }
 
+// Instagram's Content Publishing API has no public/unlisted/private option —
+// published media is always visible per the account's own privacy settings,
+// so the Privacy field is purely cosmetic there.
+export const privacyLimitationNote: Partial<Record<Platform, string>> = {
+  INSTAGRAM:
+    "Instagram's API doesn't support publishing as unlisted or private — this is ignored and the post follows your account's privacy settings.",
+}
+
 export function isPlatformSettingsComplete(
   platform: Platform,
   settings: PlatformSettings | null | undefined

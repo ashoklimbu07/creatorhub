@@ -2,12 +2,14 @@ import { redirect } from "next/navigation"
 
 import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
+import { getPlatformConnectionsSummary } from "@/lib/platform-connections"
+import { facebookService } from "@/services/platforms/facebook.service"
 import { ConnectedAccounts } from "@/components/shared/connected-accounts"
 
 export default async function AccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ connected?: string; error?: string }>
+  searchParams: Promise<{ connected?: string; error?: string; fbPick?: string }>
 }) {
   const { connected, error } = await searchParams
 
@@ -20,15 +22,13 @@ export default async function AccountsPage({
     redirect("/login")
   }
 
-  const [dbUser, youtubeConnection] = await Promise.all([
+  const [dbUser, summary, pendingFacebookPages] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: { connectedPlatforms: true },
     }),
-    prisma.platformConnection.findUnique({
-      where: { userId_platform: { userId: user.id, platform: "YOUTUBE" } },
-      select: { externalAccountName: true, externalAccountThumbnail: true },
-    }),
+    getPlatformConnectionsSummary(user.id),
+    facebookService.getPendingPages(user.id),
   ])
 
   return (
@@ -41,14 +41,10 @@ export default async function AccountsPage({
       </div>
       <ConnectedAccounts
         initialConnected={dbUser?.connectedPlatforms ?? []}
-        youtubeConnection={
-          youtubeConnection
-            ? {
-                name: youtubeConnection.externalAccountName,
-                thumbnailUrl: youtubeConnection.externalAccountThumbnail,
-              }
-            : null
-        }
+        connections={summary.singleConnections}
+        facebookConnections={summary.facebook.connections}
+        pendingFacebookPages={pendingFacebookPages}
+        manageFacebook
         callbackConnected={connected}
         callbackError={error}
       />

@@ -2,15 +2,11 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   DeleteObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
-
-export type UploadResult = {
-  url: string
-  size: number
-}
 
 const BUCKET = process.env.R2_BUCKET_NAME!
 
@@ -23,26 +19,45 @@ const s3 = new S3Client({
   },
 })
 
-// The bucket is private. `url` here is the R2 object key, not a browser-usable
-// URL — callers must resolve a display URL via getSignedVideoUrl() at render time.
-export async function uploadFile(file: File): Promise<UploadResult> {
-  const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : ""
-  const key = `videos/${crypto.randomUUID()}${ext}`
+export type PresignedUpload = {
+  uploadUrl: string
+  key: string
+}
 
-  const buffer = Buffer.from(await file.arrayBuffer())
+// Vercel (and most serverless hosts) cap request bodies well under typical
+// video sizes, so the browser uploads straight to R2 with a presigned PUT
+// instead of routing the file through a Next.js route handler. The bucket
+// stays private — this key is not a browser-usable URL — callers must
+// resolve a display URL via getSignedVideoUrl() at render time.
+export async function createUploadUrl(
+  userId: string,
+  fileName: string,
+  contentType: string,
+  expiresIn = 900
+): Promise<PresignedUpload> {
+  const ext = fileName.includes(".") ? fileName.slice(fileName.lastIndexOf(".")) : ""
+  const key = `videos/${userId}/${crypto.randomUUID()}${ext}`
 
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: file.type,
-    })
+  const uploadUrl = await getSignedUrl(
+    s3,
+    new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType }),
+    { expiresIn }
   )
 
-  return {
-    url: key,
-    size: buffer.byteLength,
+  return { uploadUrl, key }
+}
+
+// Confirms the browser's direct-to-R2 upload actually landed and returns the
+// real object size — the client-reported size is never trusted for billing
+// or quota accounting. Returns null if the object doesn't exist (upload
+// never completed).
+export async function getObjectSize(key: string): Promise<number | null> {
+  try {
+    const head = await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }))
+    return head.ContentLength ?? null
+  } catch (err) {
+    if (err instanceof Error && err.name === "NotFound") return null
+    throw err
   }
 }
 

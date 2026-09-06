@@ -78,49 +78,90 @@ export default function UploadPage() {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  function onSubmit(values: VideoMetadataInput) {
+  function putToR2(uploadUrl: string, fileToUpload: File): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open("PUT", uploadUrl)
+      xhr.setRequestHeader("Content-Type", fileToUpload.type)
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          setProgress(Math.round((event.loaded / event.total) * 100))
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve()
+        else reject(new Error("Upload to storage failed. Please try again."))
+      }
+      xhr.onerror = () => reject(new Error("Upload failed. Please check your connection."))
+
+      xhr.send(fileToUpload)
+    })
+  }
+
+  async function onSubmit(values: VideoMetadataInput) {
     if (!file) {
       setFileError("Please select a video file to upload.")
       return
     }
 
-    const formData = new FormData()
-    formData.append("file", file)
-    formData.append("title", values.title)
-    if (values.description) formData.append("description", values.description)
-
     setIsUploading(true)
     setProgress(0)
 
-    const xhr = new XMLHttpRequest()
-    xhr.open("POST", "/api/videos/upload")
+    // Video files can far exceed the request body limits of serverless route
+    // handlers, so the browser uploads straight to R2 with a presigned URL
+    // instead of proxying the bytes through Next.js.
+    let key: string | undefined
+    try {
+      const presignRes = await fetch("/api/videos/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+        }),
+      })
+      if (!presignRes.ok) {
+        const data = (await presignRes.json().catch(() => null)) as { error?: string } | null
+        throw new Error(data?.error ?? "Could not start the upload. Please try again.")
+      }
+      const presign = (await presignRes.json()) as { uploadUrl: string; key: string }
+      key = presign.key
 
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        setProgress(Math.round((event.loaded / event.total) * 100))
+      await putToR2(presign.uploadUrl, file)
+
+      const finalizeRes = await fetch("/api/videos/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: presign.key,
+          title: values.title,
+          description: values.description || undefined,
+        }),
+      })
+      if (!finalizeRes.ok) {
+        const data = (await finalizeRes.json().catch(() => null)) as { error?: string } | null
+        throw new Error(data?.error ?? "Upload failed. Please try again.")
+      }
+
+      const data = (await finalizeRes.json()) as { draftId: string }
+      toast.success("Video uploaded", {
+        description: "Your draft is ready to edit.",
+      })
+      router.push(`/dashboard/drafts/${data.draftId}`)
+    } catch (err) {
+      setIsUploading(false)
+      toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.")
+      if (key) {
+        fetch("/api/videos/finalize", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key }),
+        }).catch(() => {})
       }
     }
-
-    xhr.onload = () => {
-      setIsUploading(false)
-      if (xhr.status >= 200 && xhr.status < 300) {
-        const data = JSON.parse(xhr.responseText) as { draftId: string }
-        toast.success("Video uploaded", {
-          description: "Your draft is ready to edit.",
-        })
-        router.push(`/dashboard/drafts/${data.draftId}`)
-      } else {
-        const data = JSON.parse(xhr.responseText) as { error?: string }
-        toast.error(data.error ?? "Upload failed. Please try again.")
-      }
-    }
-
-    xhr.onerror = () => {
-      setIsUploading(false)
-      toast.error("Upload failed. Please check your connection and try again.")
-    }
-
-    xhr.send(formData)
   }
 
   return (

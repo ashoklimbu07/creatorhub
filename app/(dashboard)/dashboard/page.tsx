@@ -6,6 +6,7 @@ import { UploadCloud } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
+import { getPlatformConnectionsSummary } from "@/lib/platform-connections"
 import { RecentUploads } from "@/components/shared/recent-uploads"
 import { RecentUploadsSkeleton } from "@/components/shared/recent-uploads-skeleton"
 import { ConnectedAccounts } from "@/components/shared/connected-accounts"
@@ -20,15 +21,12 @@ export default async function DashboardPage() {
     redirect("/login")
   }
 
-  const [dbUser, youtubeConnection] = await Promise.all([
+  const [dbUser, summary] = await Promise.all([
     prisma.user.findUnique({
       where: { id: user.id },
       select: { connectedPlatforms: true },
     }),
-    prisma.platformConnection.findUnique({
-      where: { userId_platform: { userId: user.id, platform: "YOUTUBE" } },
-      select: { externalAccountName: true, externalAccountThumbnail: true },
-    }),
+    getPlatformConnectionsSummary(user.id),
   ])
 
   return (
@@ -59,14 +57,8 @@ export default async function DashboardPage() {
         <h2 className="text-lg font-medium">Connected accounts</h2>
         <ConnectedAccounts
           initialConnected={dbUser?.connectedPlatforms ?? []}
-          youtubeConnection={
-            youtubeConnection
-              ? {
-                  name: youtubeConnection.externalAccountName,
-                  thumbnailUrl: youtubeConnection.externalAccountThumbnail,
-                }
-              : null
-          }
+          connections={summary.singleConnections}
+          facebookConnections={summary.facebook.connections}
         />
       </section>
     </div>

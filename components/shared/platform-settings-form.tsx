@@ -32,6 +32,7 @@ import {
   platformSettingsSchema,
   platformLabels,
   hashtagsFieldLabel,
+  privacyLimitationNote,
   PLATFORMS_WITH_DESCRIPTION,
   type PlatformSettingsInput,
 } from "@/lib/validations/platform-settings"
@@ -205,6 +206,11 @@ export function PlatformSettingsForm({
                     <SelectItem value="PRIVATE">Private</SelectItem>
                   </SelectContent>
                 </Select>
+                {privacyLimitationNote[platform] && (
+                  <p className="text-xs text-muted-foreground">
+                    {privacyLimitationNote[platform]}
+                  </p>
+                )}
                 <FormMessage />
               </FormItem>
             )}

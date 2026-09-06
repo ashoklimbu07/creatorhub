@@ -15,3 +15,17 @@ export const videoMetadataSchema = z.object({
 })
 
 export type VideoMetadataInput = z.infer<typeof videoMetadataSchema>
+
+export const uploadUrlRequestSchema = z.object({
+  fileName: z.string().min(1),
+  fileType: z.enum(ACCEPTED_VIDEO_TYPES as [string, ...string[]]),
+  fileSize: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_VIDEO_SIZE_BYTES, "File is too large. Maximum size is 500MB."),
+})
+
+export const finalizeUploadSchema = videoMetadataSchema.extend({
+  key: z.string().min(1),
+})

@@ -55,6 +55,7 @@ model PlatformConnection {
   id                       String   @id @default(cuid())
   userId                   String
   platform                 Platform
+  isDefault                Boolean  @default(false)
   accessToken              String
   refreshToken             String
   expiresAt                DateTime
@@ -66,8 +67,11 @@ model PlatformConnection {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, platform])
+  // A platform (e.g. FACEBOOK) may have several connections per user (one
+  // per Page), but the same external account can't be connected twice.
+  @@unique([userId, platform, externalAccountId])
   @@index([userId])
+  @@index([userId, platform])
   @@map("platform_connections")
 }
 
