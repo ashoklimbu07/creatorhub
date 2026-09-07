@@ -38,6 +38,7 @@ export default async function AccountsPage({
         initialConnected={dbUser?.connectedPlatforms ?? []}
         connections={summary.singleConnections}
         facebookConnections={summary.facebook.connections}
+        youtubeConnections={summary.youtube.connections}
         callbackConnected={connected}
         callbackError={error}
       />
