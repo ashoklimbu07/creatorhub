@@ -2,33 +2,46 @@ import type { Platform } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
 import { facebookService } from "@/services/platforms/facebook.service"
-import type { PlatformConnectionInfo } from "@/components/shared/connected-accounts"
+import { youtubeService } from "@/services/platforms/youtube.service"
+import type {
+  PlatformConnectionInfo,
+  MultiConnectionInfo,
+} from "@/components/shared/connected-accounts"
 
-export type FacebookPageSummary = {
-  id: string
-  name: string
-  thumbnailUrl: string | null
-  isDefault: boolean
+export type MultiPlatformSummary = {
+  connections: MultiConnectionInfo[]
+  default: MultiConnectionInfo | null
 }
 
 export type PlatformConnectionsSummary = {
-  singleConnections: Partial<Record<Exclude<Platform, "FACEBOOK">, PlatformConnectionInfo>>
-  facebook: {
-    connections: FacebookPageSummary[]
-    default: FacebookPageSummary | null
+  singleConnections: Partial<
+    Record<Exclude<Platform, "FACEBOOK" | "YOUTUBE">, PlatformConnectionInfo>
+  >
+  facebook: MultiPlatformSummary
+  youtube: MultiPlatformSummary
+}
+
+function summarize(connections: MultiConnectionInfo[]): MultiPlatformSummary {
+  return {
+    connections,
+    default: connections.find((c) => c.isDefault) ?? connections[0] ?? null,
   }
 }
 
-// YouTube/TikTok/Instagram stay single-connection-per-user, so their rows
-// collapse 1:1 into a Platform-keyed map. Facebook can have several
-// PlatformConnection rows (one per Page) and is summarized separately.
-export async function getPlatformConnectionsSummary(userId: string): Promise<PlatformConnectionsSummary> {
-  const [otherConnections, facebookConnections] = await Promise.all([
+// TikTok/Instagram stay single-connection-per-user, so their rows collapse
+// 1:1 into a Platform-keyed map. Facebook (one row per Page) and YouTube
+// (one row per channel — see YouTubeService) can have several
+// PlatformConnection rows per user and are summarized separately.
+export async function getPlatformConnectionsSummary(
+  userId: string
+): Promise<PlatformConnectionsSummary> {
+  const [otherConnections, facebookConnections, youtubeConnections] = await Promise.all([
     prisma.platformConnection.findMany({
-      where: { userId, platform: { not: "FACEBOOK" } },
+      where: { userId, platform: { notIn: ["FACEBOOK", "YOUTUBE"] } },
       select: { platform: true, externalAccountName: true, externalAccountThumbnail: true },
     }),
     facebookService.getConnections(userId),
+    youtubeService.getConnections(userId),
   ])
 
   const singleConnections = Object.fromEntries(
@@ -36,20 +49,11 @@ export async function getPlatformConnectionsSummary(userId: string): Promise<Pla
       c.platform,
       { name: c.externalAccountName, thumbnailUrl: c.externalAccountThumbnail },
     ])
-  ) as Partial<Record<Exclude<Platform, "FACEBOOK">, PlatformConnectionInfo>>
-
-  const facebookPages: FacebookPageSummary[] = facebookConnections.map((c) => ({
-    id: c.id,
-    name: c.name,
-    thumbnailUrl: c.thumbnailUrl,
-    isDefault: c.isDefault,
-  }))
+  ) as Partial<Record<Exclude<Platform, "FACEBOOK" | "YOUTUBE">, PlatformConnectionInfo>>
 
   return {
     singleConnections,
-    facebook: {
-      connections: facebookPages,
-      default: facebookPages.find((p) => p.isDefault) ?? facebookPages[0] ?? null,
-    },
+    facebook: summarize(facebookConnections),
+    youtube: summarize(youtubeConnections),
   }
 }

@@ -23,14 +23,17 @@ import {
   disconnectPlatform,
   disconnectFacebookPage,
   setDefaultFacebookPage,
+  disconnectYouTubeChannel,
+  setDefaultYouTubeChannel,
 } from "@/app/(dashboard)/dashboard/accounts/actions"
 
+type SinglePlatform = Exclude<Platform, "FACEBOOK" | "YOUTUBE">
+
 const platforms: {
-  key: Exclude<Platform, "FACEBOOK">
+  key: SinglePlatform
   label: string
   icon: React.ComponentType<{ className?: string }>
 }[] = [
-  { key: "YOUTUBE", label: "YouTube", icon: PlaySquare },
   { key: "TIKTOK", label: "TikTok", icon: Music2 },
   { key: "INSTAGRAM", label: "Instagram", icon: Camera },
 ]
@@ -43,6 +46,7 @@ const REAL_PLATFORMS = new Set<Platform>(["YOUTUBE", "INSTAGRAM", "FACEBOOK"])
 
 function platformLabel(key: string) {
   if (key === "FACEBOOK") return "Facebook"
+  if (key === "YOUTUBE") return "YouTube"
   return platforms.find((p) => p.key === key)?.label ?? key
 }
 
@@ -60,7 +64,9 @@ export type PlatformConnectionInfo = {
   thumbnailUrl: string | null
 }
 
-export type FacebookPageConnectionInfo = {
+// Shared shape for any platform that can have several connected accounts —
+// Facebook (one row per Page) and YouTube (one row per channel).
+export type MultiConnectionInfo = {
   id: string
   name: string
   thumbnailUrl: string | null
@@ -71,12 +77,14 @@ export function ConnectedAccounts({
   initialConnected,
   connections,
   facebookConnections = [],
+  youtubeConnections = [],
   callbackConnected,
   callbackError,
 }: {
   initialConnected: Platform[]
-  connections?: Partial<Record<Exclude<Platform, "FACEBOOK">, PlatformConnectionInfo>>
-  facebookConnections?: FacebookPageConnectionInfo[]
+  connections?: Partial<Record<SinglePlatform, PlatformConnectionInfo>>
+  facebookConnections?: MultiConnectionInfo[]
+  youtubeConnections?: MultiConnectionInfo[]
   callbackConnected?: string
   callbackError?: string
 }) {
@@ -85,11 +93,14 @@ export function ConnectedAccounts({
   const [activeAction, setActiveAction] = useState<string | null>(null)
   const [connectingPlatform, setConnectingPlatform] = useState<Platform | null>(null)
   const [facebookExpanded, setFacebookExpanded] = useState(callbackConnected === "FACEBOOK")
+  const [youtubeExpanded, setYoutubeExpanded] = useState(callbackConnected === "YOUTUBE")
   const isBusy = isPending || connectingPlatform !== null
   const connectedSet = new Set(initialConnected)
 
   const defaultFacebookPage =
     facebookConnections.find((p) => p.isDefault) ?? facebookConnections[0] ?? null
+  const defaultYoutubeChannel =
+    youtubeConnections.find((c) => c.isDefault) ?? youtubeConnections[0] ?? null
 
   useEffect(() => {
     // Restore usable controls when Back returns from an OAuth provider via
@@ -105,12 +116,16 @@ export function ConnectedAccounts({
   }
 
   useEffect(() => {
-    if (callbackConnected) {
+    if (callbackConnected === "FACEBOOK") {
       toast.success(
-        callbackConnected === "FACEBOOK"
-          ? `${facebookConnections.length} Facebook ${facebookConnections.length === 1 ? "Page" : "Pages"} connected`
-          : `${platformLabel(callbackConnected)} connected`
+        `${facebookConnections.length} Facebook ${facebookConnections.length === 1 ? "Page" : "Pages"} connected`
       )
+      router.replace("/dashboard/accounts")
+    } else if (callbackConnected === "YOUTUBE") {
+      toast.success("YouTube channel connected")
+      router.replace("/dashboard/accounts")
+    } else if (callbackConnected) {
+      toast.success(`${platformLabel(callbackConnected)} connected`)
       router.replace("/dashboard/accounts")
     } else if (callbackError === "FACEBOOK_NO_PAGES") {
       toast.error(
@@ -125,14 +140,14 @@ export function ConnectedAccounts({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callbackConnected, callbackError])
 
-  function handleConnect(platform: Exclude<Platform, "FACEBOOK">) {
+  function handleConnect(platform: SinglePlatform) {
     setActiveAction(`connect:${platform}`)
     startTransition(async () => {
       await connectPlatform(platform)
     })
   }
 
-  function handleDisconnect(platform: Exclude<Platform, "FACEBOOK">) {
+  function handleDisconnect(platform: SinglePlatform) {
     setActiveAction(`disconnect:${platform}`)
     startTransition(async () => {
       try {
@@ -145,7 +160,7 @@ export function ConnectedAccounts({
     })
   }
 
-  function handleSetDefaultPage(connectionId: string) {
+  function handleSetDefaultFacebookPage(connectionId: string) {
     setActiveAction(`default:${connectionId}`)
     startTransition(async () => {
       try {
@@ -158,7 +173,7 @@ export function ConnectedAccounts({
     })
   }
 
-  function handleDisconnectPage(connectionId: string) {
+  function handleDisconnectFacebookPage(connectionId: string) {
     setActiveAction(`disconnect:${connectionId}`)
     startTransition(async () => {
       try {
@@ -167,6 +182,32 @@ export function ConnectedAccounts({
         router.refresh()
       } catch {
         toast.error("Failed to disconnect that Page")
+      }
+    })
+  }
+
+  function handleSetDefaultYouTubeChannel(connectionId: string) {
+    setActiveAction(`default:${connectionId}`)
+    startTransition(async () => {
+      try {
+        await setDefaultYouTubeChannel(connectionId)
+        toast.success("Default YouTube channel updated")
+        router.refresh()
+      } catch {
+        toast.error("Failed to set that channel as default")
+      }
+    })
+  }
+
+  function handleDisconnectYouTubeChannel(connectionId: string) {
+    setActiveAction(`disconnect:${connectionId}`)
+    startTransition(async () => {
+      try {
+        await disconnectYouTubeChannel(connectionId)
+        toast.success("Channel disconnected")
+        router.refresh()
+      } catch {
+        toast.error("Failed to disconnect that channel")
       }
     })
   }
@@ -237,164 +278,263 @@ export function ConnectedAccounts({
           )
         })}
 
-        <Card className={cn(defaultFacebookPage && "ring-primary/20")}>
-          <CardContent className="flex flex-col gap-3 px-4 py-5 text-center">
-            <button
-              type="button"
-              disabled={!defaultFacebookPage}
-              aria-expanded={facebookExpanded}
-              aria-controls="facebook-page-list"
-              onClick={() => setFacebookExpanded((current) => !current)}
-              className="flex w-full flex-col items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-default"
-            >
-              {defaultFacebookPage?.thumbnailUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={defaultFacebookPage.thumbnailUrl}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                  className="size-7 rounded-full"
-                />
-              ) : (
-                <ThumbsUp
-                  className={cn(
-                    "size-6",
-                    defaultFacebookPage ? "text-primary" : "text-muted-foreground"
-                  )}
-                />
-              )}
-              <div className="min-w-0">
-                <div className="flex items-center justify-center gap-1.5">
-                  <p className="text-sm font-medium">Facebook</p>
-                  {defaultFacebookPage && (
-                    <CheckCircle2 className="size-3.5 text-emerald-600" aria-label="Connected" />
-                  )}
-                </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {defaultFacebookPage
-                    ? `${facebookConnections.length} ${facebookConnections.length === 1 ? "Page" : "Pages"} connected`
-                    : "Not connected"}
-                </p>
-              </div>
-              {defaultFacebookPage && (
-                <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                  View Pages
-                  <ChevronDown
-                    className={cn("size-3.5 transition-transform", facebookExpanded && "rotate-180")}
-                    aria-hidden="true"
-                  />
-                </span>
-              )}
-            </button>
+        <MultiAccountCard
+          icon={PlaySquare}
+          label="YouTube"
+          connections={youtubeConnections}
+          defaultConnection={defaultYoutubeChannel}
+          expanded={youtubeExpanded}
+          onToggleExpanded={() => setYoutubeExpanded((current) => !current)}
+          itemNounPlural="channels"
+          listId="youtube-channel-list"
+          isBusy={isBusy}
+          connecting={connectingPlatform === "YOUTUBE"}
+          onAdd={() => handleOAuthConnect("YOUTUBE")}
+          addLabel={defaultYoutubeChannel ? "Add channel" : "Connect"}
+        />
 
-            {defaultFacebookPage ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="w-full"
-                disabled={isBusy}
-                aria-busy={connectingPlatform === "FACEBOOK"}
-                onClick={() => handleOAuthConnect("FACEBOOK")}
-              >
-                <ActionLabel
-                  loading={connectingPlatform === "FACEBOOK"}
-                  idle="Add Page"
-                  busy="Connecting…"
-                />
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                className="w-full"
-                disabled={isBusy}
-                aria-busy={connectingPlatform === "FACEBOOK"}
-                onClick={() => handleOAuthConnect("FACEBOOK")}
-              >
-                <ActionLabel
-                  loading={connectingPlatform === "FACEBOOK"}
-                  idle="Connect"
-                  busy="Connecting…"
-                />
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <MultiAccountCard
+          icon={ThumbsUp}
+          label="Facebook"
+          connections={facebookConnections}
+          defaultConnection={defaultFacebookPage}
+          expanded={facebookExpanded}
+          onToggleExpanded={() => setFacebookExpanded((current) => !current)}
+          itemNounPlural="Pages"
+          listId="facebook-page-list"
+          isBusy={isBusy}
+          connecting={connectingPlatform === "FACEBOOK"}
+          onAdd={() => handleOAuthConnect("FACEBOOK")}
+          addLabel={defaultFacebookPage ? "Add Page" : "Connect"}
+        />
       </div>
 
+      {youtubeExpanded && youtubeConnections.length > 0 && (
+        <MultiAccountList
+          id="youtube-channel-list"
+          title="Connected YouTube channels"
+          description="Each channel is its own Google account connection. Choose where videos publish by default."
+          icon={PlaySquare}
+          connections={youtubeConnections}
+          radioGroupName="yt-default-channel"
+          isBusy={isBusy}
+          activeAction={activeAction}
+          isPending={isPending}
+          onSetDefault={handleSetDefaultYouTubeChannel}
+          onDisconnect={handleDisconnectYouTubeChannel}
+          defaultDescription="Default publishing channel"
+          hint="Adding another channel opens Google's account picker so you can sign into a different account."
+        />
+      )}
+
       {facebookExpanded && facebookConnections.length > 0 && (
-        <Card id="facebook-page-list">
-          <CardContent className="flex flex-col gap-4 px-4 py-5">
-            <div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium">Connected Facebook Pages</p>
-                  <Badge variant="secondary">{facebookConnections.length}</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Pages selected on Facebook appear here automatically. Choose where videos publish by default.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              {facebookConnections.map((page) => (
-                <div
-                  key={page.id}
-                  className={cn(
-                    "flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between",
-                    page.isDefault && "border-primary/30 bg-muted/40"
-                  )}
-                >
-                  <label className="flex min-w-0 cursor-pointer items-center gap-3">
-                    <input
-                      type="radio"
-                      name="fb-default-page"
-                      aria-label={`Set ${page.name} as default`}
-                      checked={page.isDefault}
-                      disabled={isBusy}
-                      onChange={() => handleSetDefaultPage(page.id)}
-                      className="size-4 shrink-0 accent-primary"
-                    />
-                    {page.thumbnailUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={page.thumbnailUrl}
-                        alt=""
-                        referrerPolicy="no-referrer"
-                        className="size-8 rounded-full"
-                      />
-                    ) : (
-                      <span className="flex size-8 items-center justify-center rounded-full bg-muted">
-                        <ThumbsUp className="size-4 text-muted-foreground" />
-                      </span>
-                    )}
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">{page.name}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {page.isDefault ? "Default publishing Page" : "Connected"}
-                      </span>
-                    </span>
-                    {page.isDefault && <Badge>Default</Badge>}
-                  </label>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="destructive"
-                    className="self-end sm:self-auto"
-                    disabled={isBusy}
-                    aria-busy={isPending && activeAction === `disconnect:${page.id}`}
-                    onClick={() => handleDisconnectPage(page.id)}
-                  >
-                    <ActionLabel loading={isPending && activeAction === `disconnect:${page.id}`}
-                      idle="Disconnect" busy="Disconnecting…" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <MultiAccountList
+          id="facebook-page-list"
+          title="Connected Facebook Pages"
+          description="Pages selected on Facebook appear here automatically. Choose where videos publish by default."
+          icon={ThumbsUp}
+          connections={facebookConnections}
+          radioGroupName="fb-default-page"
+          isBusy={isBusy}
+          activeAction={activeAction}
+          isPending={isPending}
+          onSetDefault={handleSetDefaultFacebookPage}
+          onDisconnect={handleDisconnectFacebookPage}
+          defaultDescription="Default publishing Page"
+        />
       )}
     </div>
+  )
+}
+
+function MultiAccountCard({
+  icon: Icon,
+  label,
+  connections,
+  defaultConnection,
+  expanded,
+  onToggleExpanded,
+  itemNounPlural,
+  listId,
+  isBusy,
+  connecting,
+  onAdd,
+  addLabel,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  connections: MultiConnectionInfo[]
+  defaultConnection: MultiConnectionInfo | null
+  expanded: boolean
+  onToggleExpanded: () => void
+  itemNounPlural: string
+  listId: string
+  isBusy: boolean
+  connecting: boolean
+  onAdd: () => void
+  addLabel: string
+}) {
+  return (
+    <Card className={cn(defaultConnection && "ring-primary/20")}>
+      <CardContent className="flex flex-col gap-3 px-4 py-5 text-center">
+        <button
+          type="button"
+          disabled={!defaultConnection}
+          aria-expanded={expanded}
+          aria-controls={listId}
+          onClick={onToggleExpanded}
+          className="flex w-full flex-col items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-default"
+        >
+          {defaultConnection?.thumbnailUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={defaultConnection.thumbnailUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="size-7 rounded-full"
+            />
+          ) : (
+            <Icon
+              className={cn("size-6", defaultConnection ? "text-primary" : "text-muted-foreground")}
+            />
+          )}
+          <div className="min-w-0">
+            <div className="flex items-center justify-center gap-1.5">
+              <p className="text-sm font-medium">{label}</p>
+              {defaultConnection && (
+                <CheckCircle2 className="size-3.5 text-emerald-600" aria-label="Connected" />
+              )}
+            </div>
+            <p className="truncate text-xs text-muted-foreground">
+              {defaultConnection ? `${connections.length} ${itemNounPlural} connected` : "Not connected"}
+            </p>
+          </div>
+          {defaultConnection && (
+            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              View {itemNounPlural}
+              <ChevronDown
+                className={cn("size-3.5 transition-transform", expanded && "rotate-180")}
+                aria-hidden="true"
+              />
+            </span>
+          )}
+        </button>
+
+        <Button
+          type="button"
+          size="sm"
+          variant={defaultConnection ? "outline" : "default"}
+          className="w-full"
+          disabled={isBusy}
+          aria-busy={connecting}
+          onClick={onAdd}
+        >
+          <ActionLabel loading={connecting} idle={addLabel} busy="Connecting…" />
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+function MultiAccountList({
+  id,
+  title,
+  description,
+  icon: Icon,
+  connections,
+  radioGroupName,
+  isBusy,
+  activeAction,
+  isPending,
+  onSetDefault,
+  onDisconnect,
+  defaultDescription,
+  hint,
+}: {
+  id: string
+  title: string
+  description: string
+  icon: React.ComponentType<{ className?: string }>
+  connections: MultiConnectionInfo[]
+  radioGroupName: string
+  isBusy: boolean
+  activeAction: string | null
+  isPending: boolean
+  onSetDefault: (connectionId: string) => void
+  onDisconnect: (connectionId: string) => void
+  defaultDescription: string
+  hint?: string
+}) {
+  return (
+    <Card id={id}>
+      <CardContent className="flex flex-col gap-4 px-4 py-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">{title}</p>
+            <Badge variant="secondary">{connections.length}</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          {connections.map((connection) => (
+            <div
+              key={connection.id}
+              className={cn(
+                "flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between",
+                connection.isDefault && "border-primary/30 bg-muted/40"
+              )}
+            >
+              <label className="flex min-w-0 cursor-pointer items-center gap-3">
+                <input
+                  type="radio"
+                  name={radioGroupName}
+                  aria-label={`Set ${connection.name} as default`}
+                  checked={connection.isDefault}
+                  disabled={isBusy}
+                  onChange={() => onSetDefault(connection.id)}
+                  className="size-4 shrink-0 accent-primary"
+                />
+                {connection.thumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={connection.thumbnailUrl}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    className="size-8 rounded-full"
+                  />
+                ) : (
+                  <span className="flex size-8 items-center justify-center rounded-full bg-muted">
+                    <Icon className="size-4 text-muted-foreground" />
+                  </span>
+                )}
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium">{connection.name}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {connection.isDefault ? defaultDescription : "Connected"}
+                  </span>
+                </span>
+                {connection.isDefault && <Badge>Default</Badge>}
+              </label>
+              <Button
+                type="button"
+                size="xs"
+                variant="destructive"
+                className="self-end sm:self-auto"
+                disabled={isBusy}
+                aria-busy={isPending && activeAction === `disconnect:${connection.id}`}
+                onClick={() => onDisconnect(connection.id)}
+              >
+                <ActionLabel
+                  loading={isPending && activeAction === `disconnect:${connection.id}`}
+                  idle="Disconnect"
+                  busy="Disconnecting…"
+                />
+              </Button>
+            </div>
+          ))}
+        </div>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </CardContent>
+    </Card>
   )
 }

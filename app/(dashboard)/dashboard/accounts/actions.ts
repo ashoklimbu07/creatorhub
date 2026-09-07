@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { platformServices, type Platform } from "@/services/platforms"
 import { facebookService } from "@/services/platforms/facebook.service"
+import { youtubeService } from "@/services/platforms/youtube.service"
 
 async function requireUserId() {
   const supabase = await createClient()
@@ -47,6 +48,26 @@ export async function setDefaultFacebookPage(connectionId: string) {
   const result = await facebookService.setDefaultPage(userId, connectionId)
   if (!result.success) {
     throw new Error("Failed to set that Page as default")
+  }
+  revalidatePath("/dashboard/accounts")
+  revalidatePath("/dashboard")
+}
+
+export async function disconnectYouTubeChannel(connectionId: string) {
+  const userId = await requireUserId()
+  const result = await youtubeService.disconnectChannel(userId, connectionId)
+  if (!result.success) {
+    throw new Error("Failed to disconnect that channel")
+  }
+  revalidatePath("/dashboard/accounts")
+  revalidatePath("/dashboard")
+}
+
+export async function setDefaultYouTubeChannel(connectionId: string) {
+  const userId = await requireUserId()
+  const result = await youtubeService.setDefaultChannel(userId, connectionId)
+  if (!result.success) {
+    throw new Error("Failed to set that channel as default")
   }
   revalidatePath("/dashboard/accounts")
   revalidatePath("/dashboard")

@@ -46,9 +46,12 @@ export function buildAuthorizeUrl(state: string): string {
   url.searchParams.set("response_type", "code")
   url.searchParams.set("scope", SCOPES)
   url.searchParams.set("access_type", "offline")
-  // Forces Google to always issue a refresh_token, even for a user who
-  // connected before — otherwise a re-consent only returns an access_token.
-  url.searchParams.set("prompt", "consent")
+  // "consent" forces Google to always issue a refresh_token, even for a user
+  // who connected before — otherwise a re-consent only returns an
+  // access_token. "select_account" forces the account chooser so connecting
+  // a second/third channel doesn't silently reuse whichever Google account
+  // is currently signed into the browser.
+  url.searchParams.set("prompt", "consent select_account")
   url.searchParams.set("state", state)
   return url.toString()
 }
