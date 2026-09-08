@@ -1,11 +1,12 @@
 "use client"
 
 import { useRef, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
-import { UploadCloud, X } from "lucide-react"
+import { Layers3, UploadCloud, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -261,11 +262,19 @@ export default function UploadPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Upload video</h1>
-        <p className="text-muted-foreground">
-          Upload a video once, then publish it to every platform from its draft.
-        </p>
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+        <div>
+          <h1 className="text-2xl font-semibold">Upload video</h1>
+          <p className="text-muted-foreground">
+            Upload a video once, then publish it to every platform from its draft.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/upload/bulk">
+            <Layers3 />
+            Upload multiple
+          </Link>
+        </Button>
       </div>
 
       <Card>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import { PlaySquare, Music2, Camera, ThumbsUp } from "lucide-react"
+import { PlaySquare, Music2, Camera, ThumbsUp, Check } from "lucide-react"
 import type { Platform, PlatformSettings } from "@prisma/client"
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -28,6 +28,9 @@ export function PlatformSettingsTabs({
   settingsByPlatform: Record<Platform, PlatformSettings | null>
   sourceDimensions: SourceDimensions | null
 }) {
+  const firstSelectedPlatform =
+    PLATFORM_TABS.find(({ key }) => settingsByPlatform[key] !== null)?.key ??
+    "YOUTUBE"
   const [dirty, setDirty] = useState<Record<Platform, boolean>>({
     YOUTUBE: false,
     TIKTOK: false,
@@ -46,13 +49,19 @@ export function PlatformSettingsTabs({
   }, [])
 
   return (
-    <Tabs defaultValue="YOUTUBE" className="w-full">
+    <Tabs defaultValue={firstSelectedPlatform} className="w-full">
       <div className="-mx-1 overflow-x-auto px-1">
         <TabsList className="w-max">
           {PLATFORM_TABS.map(({ key, label, icon: Icon }) => (
             <TabsTrigger key={key} value={key} className="gap-1.5">
               <Icon className="size-4" />
               {label}
+              {settingsByPlatform[key] !== null && (
+                <Check
+                  className="size-3 text-emerald-600 dark:text-emerald-400"
+                  aria-label="Selected for publishing"
+                />
+              )}
               {dirty[key] && (
                 <span
                   className="ml-0.5 size-1.5 shrink-0 rounded-full bg-primary"

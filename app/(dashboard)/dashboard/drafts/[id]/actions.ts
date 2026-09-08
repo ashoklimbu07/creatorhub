@@ -5,35 +5,29 @@ import type { Platform } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
 import { createClient } from "@/lib/supabase/server"
-import { getSignedVideoUrl } from "@/lib/storage"
 import { platformServices } from "@/services/platforms"
 import {
   platformSettingsSchemaFor,
   isPlatformSettingsComplete,
-  PLATFORMS_WITH_DESCRIPTION,
   type PlatformSettingsInput,
 } from "@/lib/validations/platform-settings"
+import {
+  publishPlatformForUser,
+  type PublishPlatformResult,
+} from "@/lib/publish-platform"
 
 async function requireUserId() {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error("Unauthorized")
-  }
-
+  if (!user) throw new Error("Unauthorized")
   return user.id
 }
 
 async function requireOwnedVideo(videoId: string, userId: string) {
   const video = await prisma.video.findUnique({ where: { id: videoId } })
-
-  if (!video || video.userId !== userId) {
-    throw new Error("Video not found")
-  }
-
+  if (!video || video.userId !== userId) throw new Error("Video not found")
   return video
 }
 
@@ -44,7 +38,6 @@ export async function savePlatformSettings(
 ) {
   const userId = await requireUserId()
   await requireOwnedVideo(videoId, userId)
-
   const parsed = platformSettingsSchemaFor(platform).parse(data)
 
   await prisma.platformSettings.upsert({
@@ -70,25 +63,16 @@ export async function savePlatformSettings(
       scheduledAt: parsed.scheduledAt,
     },
   })
-
   await prisma.draft.update({
     where: { videoId },
     data: { lastEditedAt: new Date() },
   })
-
   revalidatePath("/dashboard/drafts")
 }
 
-// Backfill for videos uploaded before dimensions were captured at upload
-// time (see app/(dashboard)/dashboard/upload/page.tsx). The drafts page
-// detects width/height client-side from the <video> element when the DB
-// doesn't have them yet, then calls this once so every later load — and any
-// server-side publish check — can read them straight from the row instead
-// of re-detecting.
 export async function saveVideoDimensions(videoId: string, width: number, height: number) {
   const userId = await requireUserId()
   await requireOwnedVideo(videoId, userId)
-
   await prisma.video.update({
     where: { id: videoId },
     data: { width, height },
@@ -98,7 +82,6 @@ export async function saveVideoDimensions(videoId: string, width: number, height
 export async function startPublishBatch(videoId: string, platforms: Platform[]) {
   const userId = await requireUserId()
   await requireOwnedVideo(videoId, userId)
-
   await prisma.$transaction([
     prisma.video.update({
       where: { id: videoId },
@@ -111,96 +94,83 @@ export async function startPublishBatch(videoId: string, platforms: Platform[]) 
   ])
 }
 
-export type PublishPlatformResult = {
-  platform: Platform
-  success: boolean
-  error?: string
-  platformPostId?: string
+export async function configureBulkPublish(
+  videoId: string,
+  platforms: Platform[],
+  scheduledAtIso: string | null
+) {
+  const userId = await requireUserId()
+  await requireOwnedVideo(videoId, userId)
+  const uniquePlatforms = [...new Set(platforms)]
+  if (uniquePlatforms.length === 0 || uniquePlatforms.length > 4) {
+    throw new Error("Select at least one social platform.")
+  }
+
+  const settings = await prisma.platformSettings.findMany({
+    where: { videoId, platform: { in: uniquePlatforms } },
+  })
+  if (
+    uniquePlatforms.some(
+      (platform) =>
+        !isPlatformSettingsComplete(
+          platform,
+          settings.find((value) => value.platform === platform)
+        )
+    )
+  ) {
+    throw new Error("Complete and save the selected platform settings first.")
+  }
+
+  const connectedFlags = await Promise.all(
+    uniquePlatforms.map((platform) => platformServices[platform].isConnected(userId))
+  )
+  if (connectedFlags.some((connected) => !connected)) {
+    throw new Error("One or more selected social accounts are not connected.")
+  }
+
+  const scheduledAt = scheduledAtIso ? new Date(scheduledAtIso) : null
+  if (scheduledAt && (!Number.isFinite(scheduledAt.getTime()) || scheduledAt <= new Date())) {
+    throw new Error("The scheduled time must be in the future.")
+  }
+
+  await prisma.$transaction([
+    prisma.video.update({
+      where: { id: videoId },
+      data: { status: scheduledAt ? "READY" : "PUBLISHING" },
+    }),
+    prisma.platformSettings.updateMany({
+      where: { videoId, platform: { in: uniquePlatforms } },
+      data: {
+        scheduledAt,
+        publishStatus: "PENDING",
+        errorMessage: null,
+        publishedAt: null,
+      },
+    }),
+    prisma.platformSettings.updateMany({
+      where: { videoId, platform: { notIn: uniquePlatforms } },
+      data: { scheduledAt: null },
+    }),
+  ])
+  revalidatePath("/dashboard/drafts")
+  return { scheduled: scheduledAt !== null }
 }
 
-// Publishes a single platform, then — if this was the last platform in the
-// batch to resolve — rolls the parent Video.status up to PUBLISHED (partial
-// success still counts) or FAILED (every platform in the batch failed).
+export type { PublishPlatformResult }
+
 export async function publishPlatform(
   videoId: string,
   platform: Platform,
   batchPlatforms: Platform[]
 ): Promise<PublishPlatformResult> {
   const userId = await requireUserId()
-  const video = await requireOwnedVideo(videoId, userId)
-
-  const settings = await prisma.platformSettings.findUnique({
-    where: { videoId_platform: { videoId, platform } },
-  })
-
-  if (!isPlatformSettingsComplete(platform, settings)) {
-    const contentLabel = PLATFORMS_WITH_DESCRIPTION.includes(platform)
-      ? "description"
-      : "caption"
-    return {
-      platform,
-      success: false,
-      error: `This platform's tab isn't complete — add a title and ${contentLabel} first.`,
-    }
-  }
-
-  await prisma.platformSettings.update({
-    where: { videoId_platform: { videoId, platform } },
-    data: { publishStatus: "PUBLISHING" },
-  })
-
-  const service = platformServices[platform]
-  const connected = await service.isConnected(userId)
-
-  const result = connected
-    ? await service.publish({
-        userId,
-        videoUrl: await getSignedVideoUrl(video.fileUrl),
-        title: settings.title,
-        caption: settings.caption ?? "",
-        description: settings.description ?? undefined,
-        hashtags: settings.hashtags,
-        containsAltered: settings.containsAltered,
-        privacy: settings.privacy,
-        scheduledAt: settings.scheduledAt ?? undefined,
-      })
-    : {
-        success: false,
-        error: `${platform} account isn't connected — connect it from the Accounts page first.`,
-      }
-
-  await prisma.platformSettings.update({
-    where: { videoId_platform: { videoId, platform } },
-    data: {
-      publishStatus: result.success ? "SUCCESS" : "FAILED",
-      publishedAt: result.success ? new Date() : null,
-      errorMessage: result.success ? null : (result.error ?? "Unknown error"),
-    },
-  })
-
-  const batchRows = await prisma.platformSettings.findMany({
-    where: { videoId, platform: { in: batchPlatforms } },
-    select: { publishStatus: true },
-  })
-
-  const allResolved = batchRows.every(
-    (row) => row.publishStatus === "SUCCESS" || row.publishStatus === "FAILED"
-  )
-
-  if (allResolved) {
-    const anySuccess = batchRows.some((row) => row.publishStatus === "SUCCESS")
-    await prisma.video.update({
-      where: { id: videoId },
-      data: { status: anySuccess ? "PUBLISHED" : "FAILED" },
-    })
-  }
-
-  revalidatePath("/dashboard/drafts")
-
-  return {
+  await requireOwnedVideo(videoId, userId)
+  const result = await publishPlatformForUser(
+    videoId,
+    userId,
     platform,
-    success: result.success,
-    error: result.error,
-    platformPostId: "platformPostId" in result ? result.platformPostId : undefined,
-  }
+    batchPlatforms
+  )
+  revalidatePath("/dashboard/drafts")
+  return result
 }

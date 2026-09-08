@@ -1,15 +1,21 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { FileVideo } from "lucide-react"
+import type { Platform } from "@prisma/client"
 
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getSignedAssetUrl, getSignedVideoUrl } from "@/lib/storage"
 import { formatFileSize } from "@/lib/utils"
+import { isPlatformSettingsComplete } from "@/lib/validations/platform-settings"
+import { platformServices } from "@/services/platforms"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { VideoStatusBadge } from "@/components/shared/video-status-badge"
-import { DeleteDraftButton } from "@/components/shared/delete-draft-button"
+import {
+  BulkPublishDrafts,
+  type PublishableDraft,
+} from "@/components/shared/bulk-publish-drafts"
+
+const ALL_PLATFORMS: Platform[] = ["YOUTUBE", "TIKTOK", "INSTAGRAM", "FACEBOOK"]
 
 export default async function DraftsPage() {
   const user = await getCurrentUser()
@@ -18,20 +24,48 @@ export default async function DraftsPage() {
     redirect("/login")
   }
 
-  const drafts = await prisma.draft.findMany({
-    where: { video: { userId: user.id } },
-    orderBy: { lastEditedAt: "desc" },
-    include: { video: true },
-  })
+  const [drafts, connectedFlags] = await Promise.all([
+    prisma.draft.findMany({
+      where: { video: { userId: user.id } },
+      orderBy: { lastEditedAt: "desc" },
+      include: { video: { include: { platformSettings: true } } },
+    }),
+    Promise.all(
+      ALL_PLATFORMS.map((platform) => platformServices[platform].isConnected(user.id))
+    ),
+  ])
+  const connectedPlatforms = ALL_PLATFORMS.filter((_, index) => connectedFlags[index])
 
   const draftsWithPreviews = await Promise.all(
-    drafts.map(async (draft) => ({
-      ...draft,
-      previewUrl: draft.video.thumbnailUrl
-        ? await getSignedAssetUrl(draft.video.thumbnailUrl)
-        : `${await getSignedVideoUrl(draft.video.fileUrl)}#t=0.1`,
-      previewType: draft.video.thumbnailUrl ? ("image" as const) : ("video" as const),
-    }))
+    drafts.map(async (draft): Promise<PublishableDraft> => {
+      const completePlatforms = ALL_PLATFORMS.filter((platform) =>
+        isPlatformSettingsComplete(
+          platform,
+          draft.video.platformSettings.find((settings) => settings.platform === platform)
+        )
+      )
+      const nextScheduledAt = draft.video.platformSettings
+        .map((settings) => settings.scheduledAt)
+        .filter((value): value is Date => value !== null && value > new Date())
+        .sort((a, b) => a.getTime() - b.getTime())[0]
+      return {
+        id: draft.id,
+        videoId: draft.video.id,
+        title: draft.video.title,
+        status: draft.video.status,
+        lastEditedLabel: new Date(draft.lastEditedAt).toLocaleDateString(),
+        sizeLabel: draft.video.sizeBytes != null ? formatFileSize(draft.video.sizeBytes) : null,
+        previewUrl: draft.video.thumbnailUrl
+          ? await getSignedAssetUrl(draft.video.thumbnailUrl)
+          : `${await getSignedVideoUrl(draft.video.fileUrl)}#t=0.1`,
+        previewType: draft.video.thumbnailUrl ? "image" : "video",
+        completePlatforms,
+        readyPlatforms: completePlatforms.filter((platform) =>
+          connectedPlatforms.includes(platform)
+        ),
+        scheduledLabel: nextScheduledAt?.toLocaleString() ?? null,
+      }
+    })
   )
 
   return (
@@ -55,56 +89,7 @@ export default async function DraftsPage() {
           </Button>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {draftsWithPreviews.map((draft) => (
-            <Card key={draft.id}>
-              <CardContent className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center">
-                <div className="flex h-16 w-28 shrink-0 items-center justify-center rounded-md bg-muted">
-                  {draft.previewType === "image" ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={draft.previewUrl}
-                      alt={draft.video.title}
-                      className="size-full rounded-md object-cover"
-                    />
-                  ) : (
-                    <video
-                      src={draft.previewUrl}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      aria-label={`${draft.video.title} preview`}
-                      className="size-full rounded-md object-cover"
-                    />
-                  )}
-                </div>
-
-                <div className="flex flex-1 flex-col gap-1">
-                  <p className="truncate font-medium">{draft.video.title}</p>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <VideoStatusBadge status={draft.video.status} />
-                    <span>
-                      Last edited{" "}
-                      {new Date(draft.lastEditedAt).toLocaleDateString()}
-                    </span>
-                    {draft.video.sizeBytes != null && (
-                      <span>{formatFileSize(draft.video.sizeBytes)}</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 gap-2">
-                  <Button asChild size="sm">
-                    <Link href={`/dashboard/drafts/${draft.id}`}>
-                      Continue editing
-                    </Link>
-                  </Button>
-                  <DeleteDraftButton videoId={draft.video.id} />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <BulkPublishDrafts drafts={draftsWithPreviews} />
       )}
     </div>
   )
