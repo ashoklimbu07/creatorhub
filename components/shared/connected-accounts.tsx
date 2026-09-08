@@ -92,8 +92,11 @@ export function ConnectedAccounts({
   const [isPending, startTransition] = useTransition()
   const [activeAction, setActiveAction] = useState<string | null>(null)
   const [connectingPlatform, setConnectingPlatform] = useState<Platform | null>(null)
-  const [facebookExpanded, setFacebookExpanded] = useState(callbackConnected === "FACEBOOK")
-  const [youtubeExpanded, setYoutubeExpanded] = useState(callbackConnected === "YOUTUBE")
+  const [expandedPlatform, setExpandedPlatform] = useState<"FACEBOOK" | "YOUTUBE" | null>(
+    callbackConnected === "FACEBOOK" || callbackConnected === "YOUTUBE" ? callbackConnected : null
+  )
+  const facebookExpanded = expandedPlatform === "FACEBOOK"
+  const youtubeExpanded = expandedPlatform === "YOUTUBE"
   const isBusy = isPending || connectingPlatform !== null
   const connectedSet = new Set(initialConnected)
 
@@ -284,7 +287,7 @@ export function ConnectedAccounts({
           connections={youtubeConnections}
           defaultConnection={defaultYoutubeChannel}
           expanded={youtubeExpanded}
-          onToggleExpanded={() => setYoutubeExpanded((current) => !current)}
+          onToggleExpanded={() => setExpandedPlatform((current) => current === "YOUTUBE" ? null : "YOUTUBE")}
           itemNounPlural="channels"
           listId="youtube-channel-list"
           isBusy={isBusy}
@@ -299,7 +302,7 @@ export function ConnectedAccounts({
           connections={facebookConnections}
           defaultConnection={defaultFacebookPage}
           expanded={facebookExpanded}
-          onToggleExpanded={() => setFacebookExpanded((current) => !current)}
+          onToggleExpanded={() => setExpandedPlatform((current) => current === "FACEBOOK" ? null : "FACEBOOK")}
           itemNounPlural="Pages"
           listId="facebook-page-list"
           isBusy={isBusy}
@@ -375,7 +378,14 @@ function MultiAccountCard({
   addLabel: string
 }) {
   return (
-    <Card className={cn(defaultConnection && "ring-primary/20")}>
+    <Card
+      className={cn(
+        "transition-colors",
+        expanded && defaultConnection
+          ? "bg-blue-50 ring-2 ring-blue-500 dark:bg-blue-950/40 dark:ring-blue-400"
+          : defaultConnection && "ring-primary/20"
+      )}
+    >
       <CardContent className="flex flex-col gap-3 px-4 py-5 text-center">
         <button
           type="button"
@@ -410,8 +420,15 @@ function MultiAccountCard({
             </p>
           </div>
           {defaultConnection && (
-            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-              View {itemNounPlural}
+            <span
+              className={cn(
+                "flex items-center gap-1 rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                expanded
+                  ? "bg-blue-600 text-white dark:bg-blue-500"
+                  : "text-muted-foreground"
+              )}
+            >
+              {expanded ? "Viewing" : "View"} {itemNounPlural}
               <ChevronDown
                 className={cn("size-3.5 transition-transform", expanded && "rotate-180")}
                 aria-hidden="true"
