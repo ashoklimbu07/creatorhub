@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server"
 import { platformServices, type Platform } from "@/services/platforms"
 import { facebookService } from "@/services/platforms/facebook.service"
 import { youtubeService } from "@/services/platforms/youtube.service"
+import { instagramService } from "@/services/platforms/instagram.service"
 
 async function requireUserId() {
   const supabase = await createClient()
@@ -68,6 +69,26 @@ export async function setDefaultYouTubeChannel(connectionId: string) {
   const result = await youtubeService.setDefaultChannel(userId, connectionId)
   if (!result.success) {
     throw new Error("Failed to set that channel as default")
+  }
+  revalidatePath("/dashboard/accounts")
+  revalidatePath("/dashboard")
+}
+
+export async function disconnectInstagramAccount(connectionId: string) {
+  const userId = await requireUserId()
+  const result = await instagramService.disconnectAccount(userId, connectionId)
+  if (!result.success) {
+    throw new Error("Failed to disconnect that account")
+  }
+  revalidatePath("/dashboard/accounts")
+  revalidatePath("/dashboard")
+}
+
+export async function setDefaultInstagramAccount(connectionId: string) {
+  const userId = await requireUserId()
+  const result = await instagramService.setDefaultAccount(userId, connectionId)
+  if (!result.success) {
+    throw new Error("Failed to set that account as default")
   }
   revalidatePath("/dashboard/accounts")
   revalidatePath("/dashboard")
