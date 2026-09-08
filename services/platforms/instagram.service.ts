@@ -21,6 +21,19 @@ function buildCaption(input: PublishInput): string {
   return [input.caption, hashtags].filter(Boolean).join("\n\n")
 }
 
+export interface InstagramAccountConnection {
+  id: string
+  externalAccountId: string
+  name: string
+  thumbnailUrl: string | null
+  isDefault: boolean
+}
+
+// Instagram Business Login hands back exactly one Instagram professional
+// account per OAuth grant (unlike Facebook's Page picker, which can return
+// several Pages from a single consent) — a user connects several Instagram
+// accounts by repeating the OAuth flow, mirroring YouTubeService's
+// one-row-per-channel pattern rather than FacebookService's batch upsert.
 class InstagramService implements PlatformService {
   platform: Platform = "INSTAGRAM"
 
@@ -34,41 +47,45 @@ class InstagramService implements PlatformService {
       const longLived = await exchangeForLongLivedInstagramToken(shortLived.accessToken)
       const profile = await fetchInstagramProfile(longLived.accessToken)
 
-      const existing = await prisma.platformConnection.findFirst({
+      const hasAnyAccount = await prisma.platformConnection.findFirst({
         where: { userId, platform: "INSTAGRAM" },
+        select: { id: true },
       })
 
-      if (existing) {
-        await prisma.platformConnection.update({
-          where: { id: existing.id },
-          data: {
-            accessToken: encrypt(longLived.accessToken),
-            refreshToken: encrypt(longLived.accessToken),
-            expiresAt: longLived.expiresAt,
-            externalAccountId: shortLived.igUserId,
-            externalAccountName: profile.username,
-            externalAccountThumbnail: profile.profilePictureUrl,
-          },
-        })
-      } else {
-        await prisma.platformConnection.create({
-          data: {
+      await prisma.platformConnection.upsert({
+        where: {
+          userId_platform_externalAccountId: {
             userId,
             platform: "INSTAGRAM",
-            isDefault: true,
-            accessToken: encrypt(longLived.accessToken),
-            // Instagram's long-lived token refreshes itself via
-            // ig_refresh_token — there's no separate refresh credential, so we
-            // duplicate the access token here to satisfy the shared
-            // PlatformConnection schema (see getValidAccessToken below).
-            refreshToken: encrypt(longLived.accessToken),
-            expiresAt: longLived.expiresAt,
             externalAccountId: shortLived.igUserId,
-            externalAccountName: profile.username,
-            externalAccountThumbnail: profile.profilePictureUrl,
           },
-        })
-      }
+        },
+        create: {
+          userId,
+          platform: "INSTAGRAM",
+          // First account this user connects becomes the default publish
+          // target; re-authorizing an already-connected account must never
+          // flip default status (matches YouTubeService.handleCallback).
+          isDefault: !hasAnyAccount,
+          accessToken: encrypt(longLived.accessToken),
+          // Instagram's long-lived token refreshes itself via
+          // ig_refresh_token — there's no separate refresh credential, so we
+          // duplicate the access token here to satisfy the shared
+          // PlatformConnection schema (see getValidAccessToken below).
+          refreshToken: encrypt(longLived.accessToken),
+          expiresAt: longLived.expiresAt,
+          externalAccountId: shortLived.igUserId,
+          externalAccountName: profile.username,
+          externalAccountThumbnail: profile.profilePictureUrl,
+        },
+        update: {
+          accessToken: encrypt(longLived.accessToken),
+          refreshToken: encrypt(longLived.accessToken),
+          expiresAt: longLived.expiresAt,
+          externalAccountName: profile.username,
+          externalAccountThumbnail: profile.profilePictureUrl,
+        },
+      })
 
       return { success: true }
     } catch (error) {
@@ -84,6 +101,9 @@ class InstagramService implements PlatformService {
     return connection !== null
   }
 
+  // Interface-level fallback that disconnects every connected account — the
+  // Connected Accounts UI uses disconnectAccount for the normal per-account
+  // flow.
   async disconnect(userId: string): Promise<void> {
     // Instagram API with Instagram Login has no documented public
     // token-revocation endpoint — the user revokes access from the
@@ -93,11 +113,66 @@ class InstagramService implements PlatformService {
     })
   }
 
+  async disconnectAccount(userId: string, connectionId: string): Promise<{ success: boolean }> {
+    const connection = await prisma.platformConnection.findUnique({
+      where: { id: connectionId },
+    })
+    if (!connection || connection.userId !== userId || connection.platform !== "INSTAGRAM") {
+      return { success: false }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.platformConnection.delete({ where: { id: connectionId } })
+
+      if (connection.isDefault) {
+        const next = await tx.platformConnection.findFirst({
+          where: { userId, platform: "INSTAGRAM" },
+          orderBy: { createdAt: "asc" },
+        })
+        if (next) {
+          await tx.platformConnection.update({
+            where: { id: next.id },
+            data: { isDefault: true },
+          })
+        }
+      }
+    })
+
+    return { success: true }
+  }
+
+  async setDefaultAccount(userId: string, connectionId: string): Promise<{ success: boolean }> {
+    const connection = await prisma.platformConnection.findUnique({
+      where: { id: connectionId },
+    })
+    if (!connection || connection.userId !== userId || connection.platform !== "INSTAGRAM") {
+      return { success: false }
+    }
+
+    await prisma.$transaction([
+      prisma.platformConnection.updateMany({
+        where: { userId, platform: "INSTAGRAM", isDefault: true },
+        data: { isDefault: false },
+      }),
+      prisma.platformConnection.update({
+        where: { id: connectionId },
+        data: { isDefault: true },
+      }),
+    ])
+
+    return { success: true }
+  }
+
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
-      const connection = await prisma.platformConnection.findFirst({
-        where: { userId: input.userId, platform: "INSTAGRAM" },
-      })
+      const connection =
+        (await prisma.platformConnection.findFirst({
+          where: { userId: input.userId, platform: "INSTAGRAM", isDefault: true },
+        })) ??
+        (await prisma.platformConnection.findFirst({
+          where: { userId: input.userId, platform: "INSTAGRAM" },
+          orderBy: { createdAt: "asc" },
+        }))
 
       if (!connection) {
         return { success: false, error: "Instagram account isn't connected." }
@@ -124,6 +199,29 @@ class InstagramService implements PlatformService {
     } catch (error) {
       return { success: false, error: mapInstagramError(error) }
     }
+  }
+
+  // All accounts currently connected for a user, oldest first.
+  async getConnections(userId: string): Promise<InstagramAccountConnection[]> {
+    const connections = await prisma.platformConnection.findMany({
+      where: { userId, platform: "INSTAGRAM" },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        externalAccountId: true,
+        externalAccountName: true,
+        externalAccountThumbnail: true,
+        isDefault: true,
+      },
+    })
+
+    return connections.map((c) => ({
+      id: c.id,
+      externalAccountId: c.externalAccountId,
+      name: c.externalAccountName,
+      thumbnailUrl: c.externalAccountThumbnail,
+      isDefault: c.isDefault,
+    }))
   }
 
   private async getValidAccessToken(connection: PlatformConnection): Promise<string> {

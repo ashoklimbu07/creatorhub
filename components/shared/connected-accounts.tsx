@@ -25,18 +25,17 @@ import {
   setDefaultFacebookPage,
   disconnectYouTubeChannel,
   setDefaultYouTubeChannel,
+  disconnectInstagramAccount,
+  setDefaultInstagramAccount,
 } from "@/app/(dashboard)/dashboard/accounts/actions"
 
-type SinglePlatform = Exclude<Platform, "FACEBOOK" | "YOUTUBE">
+type SinglePlatform = Exclude<Platform, "FACEBOOK" | "YOUTUBE" | "INSTAGRAM">
 
 const platforms: {
   key: SinglePlatform
   label: string
   icon: React.ComponentType<{ className?: string }>
-}[] = [
-  { key: "TIKTOK", label: "TikTok", icon: Music2 },
-  { key: "INSTAGRAM", label: "Instagram", icon: Camera },
-]
+}[] = [{ key: "TIKTOK", label: "TikTok", icon: Music2 }]
 
 // Platforms with a real OAuth connect flow link straight to their own
 // `/api/platforms/{platform}/connect` route (same pattern as YouTube in
@@ -47,6 +46,7 @@ const REAL_PLATFORMS = new Set<Platform>(["YOUTUBE", "INSTAGRAM", "FACEBOOK"])
 function platformLabel(key: string) {
   if (key === "FACEBOOK") return "Facebook"
   if (key === "YOUTUBE") return "YouTube"
+  if (key === "INSTAGRAM") return "Instagram"
   return platforms.find((p) => p.key === key)?.label ?? key
 }
 
@@ -78,6 +78,7 @@ export function ConnectedAccounts({
   connections,
   facebookConnections = [],
   youtubeConnections = [],
+  instagramConnections = [],
   callbackConnected,
   callbackError,
 }: {
@@ -85,6 +86,7 @@ export function ConnectedAccounts({
   connections?: Partial<Record<SinglePlatform, PlatformConnectionInfo>>
   facebookConnections?: MultiConnectionInfo[]
   youtubeConnections?: MultiConnectionInfo[]
+  instagramConnections?: MultiConnectionInfo[]
   callbackConnected?: string
   callbackError?: string
 }) {
@@ -92,11 +94,18 @@ export function ConnectedAccounts({
   const [isPending, startTransition] = useTransition()
   const [activeAction, setActiveAction] = useState<string | null>(null)
   const [connectingPlatform, setConnectingPlatform] = useState<Platform | null>(null)
-  const [expandedPlatform, setExpandedPlatform] = useState<"FACEBOOK" | "YOUTUBE" | null>(
-    callbackConnected === "FACEBOOK" || callbackConnected === "YOUTUBE" ? callbackConnected : null
+  const [expandedPlatform, setExpandedPlatform] = useState<
+    "FACEBOOK" | "YOUTUBE" | "INSTAGRAM" | null
+  >(
+    callbackConnected === "FACEBOOK" ||
+      callbackConnected === "YOUTUBE" ||
+      callbackConnected === "INSTAGRAM"
+      ? callbackConnected
+      : null
   )
   const facebookExpanded = expandedPlatform === "FACEBOOK"
   const youtubeExpanded = expandedPlatform === "YOUTUBE"
+  const instagramExpanded = expandedPlatform === "INSTAGRAM"
   const isBusy = isPending || connectingPlatform !== null
   const connectedSet = new Set(initialConnected)
 
@@ -104,6 +113,8 @@ export function ConnectedAccounts({
     facebookConnections.find((p) => p.isDefault) ?? facebookConnections[0] ?? null
   const defaultYoutubeChannel =
     youtubeConnections.find((c) => c.isDefault) ?? youtubeConnections[0] ?? null
+  const defaultInstagramAccount =
+    instagramConnections.find((c) => c.isDefault) ?? instagramConnections[0] ?? null
 
   useEffect(() => {
     // Restore usable controls when Back returns from an OAuth provider via
@@ -126,6 +137,9 @@ export function ConnectedAccounts({
       router.replace("/dashboard/accounts")
     } else if (callbackConnected === "YOUTUBE") {
       toast.success("YouTube channel connected")
+      router.replace("/dashboard/accounts")
+    } else if (callbackConnected === "INSTAGRAM") {
+      toast.success("Instagram account connected")
       router.replace("/dashboard/accounts")
     } else if (callbackConnected) {
       toast.success(`${platformLabel(callbackConnected)} connected`)
@@ -211,6 +225,32 @@ export function ConnectedAccounts({
         router.refresh()
       } catch {
         toast.error("Failed to disconnect that channel")
+      }
+    })
+  }
+
+  function handleSetDefaultInstagramAccount(connectionId: string) {
+    setActiveAction(`default:${connectionId}`)
+    startTransition(async () => {
+      try {
+        await setDefaultInstagramAccount(connectionId)
+        toast.success("Default Instagram account updated")
+        router.refresh()
+      } catch {
+        toast.error("Failed to set that account as default")
+      }
+    })
+  }
+
+  function handleDisconnectInstagramAccount(connectionId: string) {
+    setActiveAction(`disconnect:${connectionId}`)
+    startTransition(async () => {
+      try {
+        await disconnectInstagramAccount(connectionId)
+        toast.success("Account disconnected")
+        router.refresh()
+      } catch {
+        toast.error("Failed to disconnect that account")
       }
     })
   }
@@ -310,6 +350,21 @@ export function ConnectedAccounts({
           onAdd={() => handleOAuthConnect("FACEBOOK")}
           addLabel={defaultFacebookPage ? "Add Page" : "Connect"}
         />
+
+        <MultiAccountCard
+          icon={Camera}
+          label="Instagram"
+          connections={instagramConnections}
+          defaultConnection={defaultInstagramAccount}
+          expanded={instagramExpanded}
+          onToggleExpanded={() => setExpandedPlatform((current) => current === "INSTAGRAM" ? null : "INSTAGRAM")}
+          itemNounPlural="accounts"
+          listId="instagram-account-list"
+          isBusy={isBusy}
+          connecting={connectingPlatform === "INSTAGRAM"}
+          onAdd={() => handleOAuthConnect("INSTAGRAM")}
+          addLabel={defaultInstagramAccount ? "Add account" : "Connect"}
+        />
       </div>
 
       {youtubeExpanded && youtubeConnections.length > 0 && (
@@ -344,6 +399,24 @@ export function ConnectedAccounts({
           onSetDefault={handleSetDefaultFacebookPage}
           onDisconnect={handleDisconnectFacebookPage}
           defaultDescription="Default publishing Page"
+        />
+      )}
+
+      {instagramExpanded && instagramConnections.length > 0 && (
+        <MultiAccountList
+          id="instagram-account-list"
+          title="Connected Instagram accounts"
+          description="Each account is its own Instagram login. Choose where videos publish by default."
+          icon={Camera}
+          connections={instagramConnections}
+          radioGroupName="ig-default-account"
+          isBusy={isBusy}
+          activeAction={activeAction}
+          isPending={isPending}
+          onSetDefault={handleSetDefaultInstagramAccount}
+          onDisconnect={handleDisconnectInstagramAccount}
+          defaultDescription="Default publishing account"
+          hint="Adding another account opens Instagram's login so you can sign into a different account."
         />
       )}
     </div>

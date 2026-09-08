@@ -124,6 +124,13 @@ export function buildInstagramAuthorizeUrl(state: string): string {
   url.searchParams.set("response_type", "code")
   url.searchParams.set("scope", INSTAGRAM_SCOPES)
   url.searchParams.set("state", state)
+  // Without this, Instagram silently re-grants whatever account the browser
+  // is already logged into and never re-shows its login/account chooser —
+  // so a user who wants to add a second Instagram account stays stuck on
+  // their original one. `force_reauth` forces the dialog to prompt again,
+  // mirroring Facebook's `auth_type=rerequest` and Google's
+  // `prompt=select_account` for the same reason.
+  url.searchParams.set("force_reauth", "true")
   return url.toString()
 }
 

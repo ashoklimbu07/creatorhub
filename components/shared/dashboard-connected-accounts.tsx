@@ -17,6 +17,7 @@ export async function DashboardConnectedAccounts({ userId }: { userId: string })
       connections={summary.singleConnections}
       facebookConnections={summary.facebook.connections}
       youtubeConnections={summary.youtube.connections}
+      instagramConnections={summary.instagram.connections}
     />
   )
 }
