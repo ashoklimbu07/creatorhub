@@ -40,6 +40,7 @@ export default async function AccountsPage({
         facebookConnections={summary.facebook.connections}
         youtubeConnections={summary.youtube.connections}
         instagramConnections={summary.instagram.connections}
+        tiktokConnections={summary.tiktok.connections}
         callbackConnected={connected}
         callbackError={error}
       />

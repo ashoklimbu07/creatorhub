@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server"
 import { platformServices, type Platform } from "@/services/platforms"
 import { facebookService } from "@/services/platforms/facebook.service"
 import { youtubeService } from "@/services/platforms/youtube.service"
+import { tiktokService } from "@/services/platforms/tiktok.service"
 import { instagramService } from "@/services/platforms/instagram.service"
 
 async function requireUserId() {
@@ -87,6 +88,26 @@ export async function disconnectInstagramAccount(connectionId: string) {
 export async function setDefaultInstagramAccount(connectionId: string) {
   const userId = await requireUserId()
   const result = await instagramService.setDefaultAccount(userId, connectionId)
+  if (!result.success) {
+    throw new Error("Failed to set that account as default")
+  }
+  revalidatePath("/dashboard/accounts")
+  revalidatePath("/dashboard")
+}
+
+export async function disconnectTikTokAccount(connectionId: string) {
+  const userId = await requireUserId()
+  const result = await tiktokService.disconnectAccount(userId, connectionId)
+  if (!result.success) {
+    throw new Error("Failed to disconnect that account")
+  }
+  revalidatePath("/dashboard/accounts")
+  revalidatePath("/dashboard")
+}
+
+export async function setDefaultTikTokAccount(connectionId: string) {
+  const userId = await requireUserId()
+  const result = await tiktokService.setDefaultAccount(userId, connectionId)
   if (!result.success) {
     throw new Error("Failed to set that account as default")
   }
