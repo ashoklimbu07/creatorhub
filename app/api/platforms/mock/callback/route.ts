@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { platformServices, type Platform } from "@/services/platforms"
 
-const VALID_PLATFORMS = new Set(Object.keys(platformServices))
+// Real TikTok callbacks must pass the browser-bound state check in its own route.
+const VALID_PLATFORMS = new Set(Object.keys(platformServices).filter((p) => p !== "TIKTOK"))
 
 // Stands in for a real provider's OAuth redirect target. Phases 4-6 point
 // the "authorize" URL at the real provider instead, but this route (and the

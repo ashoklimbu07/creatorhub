@@ -19,35 +19,21 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import {
-  connectPlatform,
-  disconnectPlatform,
   disconnectFacebookPage,
   setDefaultFacebookPage,
   disconnectYouTubeChannel,
   setDefaultYouTubeChannel,
   disconnectInstagramAccount,
   setDefaultInstagramAccount,
+  disconnectTikTokAccount,
+  setDefaultTikTokAccount,
 } from "@/app/(dashboard)/dashboard/accounts/actions"
-
-type SinglePlatform = Exclude<Platform, "FACEBOOK" | "YOUTUBE" | "INSTAGRAM">
-
-const platforms: {
-  key: SinglePlatform
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-}[] = [{ key: "TIKTOK", label: "TikTok", icon: Music2 }]
-
-// Platforms with a real OAuth connect flow link straight to their own
-// `/api/platforms/{platform}/connect` route (same pattern as YouTube in
-// Phase 4) instead of the generic connectPlatform server action — TikTok
-// stays on the mock flow until Phase 6.
-const REAL_PLATFORMS = new Set<Platform>(["YOUTUBE", "INSTAGRAM", "FACEBOOK"])
 
 function platformLabel(key: string) {
   if (key === "FACEBOOK") return "Facebook"
   if (key === "YOUTUBE") return "YouTube"
   if (key === "INSTAGRAM") return "Instagram"
-  return platforms.find((p) => p.key === key)?.label ?? key
+  return key === "TIKTOK" ? "TikTok" : key
 }
 
 function ActionLabel({ loading, idle, busy }: { loading: boolean; idle: string; busy: string }) {
@@ -74,19 +60,19 @@ export type MultiConnectionInfo = {
 }
 
 export function ConnectedAccounts({
-  initialConnected,
-  connections,
   facebookConnections = [],
   youtubeConnections = [],
   instagramConnections = [],
+  tiktokConnections = [],
   callbackConnected,
   callbackError,
 }: {
   initialConnected: Platform[]
-  connections?: Partial<Record<SinglePlatform, PlatformConnectionInfo>>
+  connections?: Partial<Record<Platform, PlatformConnectionInfo>>
   facebookConnections?: MultiConnectionInfo[]
   youtubeConnections?: MultiConnectionInfo[]
   instagramConnections?: MultiConnectionInfo[]
+  tiktokConnections?: MultiConnectionInfo[]
   callbackConnected?: string
   callbackError?: string
 }) {
@@ -95,11 +81,11 @@ export function ConnectedAccounts({
   const [activeAction, setActiveAction] = useState<string | null>(null)
   const [connectingPlatform, setConnectingPlatform] = useState<Platform | null>(null)
   const [expandedPlatform, setExpandedPlatform] = useState<
-    "FACEBOOK" | "YOUTUBE" | "INSTAGRAM" | null
+    Platform | null
   >(
     callbackConnected === "FACEBOOK" ||
       callbackConnected === "YOUTUBE" ||
-      callbackConnected === "INSTAGRAM"
+      callbackConnected === "INSTAGRAM" || callbackConnected === "TIKTOK"
       ? callbackConnected
       : null
   )
@@ -107,7 +93,8 @@ export function ConnectedAccounts({
   const youtubeExpanded = expandedPlatform === "YOUTUBE"
   const instagramExpanded = expandedPlatform === "INSTAGRAM"
   const isBusy = isPending || connectingPlatform !== null
-  const connectedSet = new Set(initialConnected)
+  const tiktokExpanded = expandedPlatform === "TIKTOK"
+  const defaultTikTokAccount = tiktokConnections.find((c) => c.isDefault) ?? tiktokConnections[0] ?? null
 
   const defaultFacebookPage =
     facebookConnections.find((p) => p.isDefault) ?? facebookConnections[0] ?? null
@@ -150,32 +137,15 @@ export function ConnectedAccounts({
         { duration: 12000 }
       )
       router.replace("/dashboard/accounts")
+    } else if (callbackError === "TIKTOK_CONFIG") {
+      toast.error("TikTok connection is not configured yet. Contact the app administrator.")
+      router.replace("/dashboard/accounts")
     } else if (callbackError) {
       toast.error("Couldn't connect that account. Please try again.")
       router.replace("/dashboard/accounts")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callbackConnected, callbackError])
-
-  function handleConnect(platform: SinglePlatform) {
-    setActiveAction(`connect:${platform}`)
-    startTransition(async () => {
-      await connectPlatform(platform)
-    })
-  }
-
-  function handleDisconnect(platform: SinglePlatform) {
-    setActiveAction(`disconnect:${platform}`)
-    startTransition(async () => {
-      try {
-        await disconnectPlatform(platform)
-        toast.success(`${platformLabel(platform)} disconnected`)
-        router.refresh()
-      } catch {
-        toast.error("Failed to disconnect")
-      }
-    })
-  }
 
   function handleSetDefaultFacebookPage(connectionId: string) {
     setActiveAction(`default:${connectionId}`)
@@ -255,71 +225,49 @@ export function ConnectedAccounts({
     })
   }
 
+  function handleSetDefaultTikTokAccount(connectionId: string) {
+    setActiveAction(`default:${connectionId}`)
+    startTransition(async () => {
+      try {
+        await setDefaultTikTokAccount(connectionId)
+        toast.success("Default TikTok account updated")
+        router.refresh()
+      } catch {
+        toast.error("Failed to set that account as default")
+      }
+    })
+  }
+
+  function handleDisconnectTikTokAccount(connectionId: string) {
+    setActiveAction(`disconnect:${connectionId}`)
+    startTransition(async () => {
+      try {
+        await disconnectTikTokAccount(connectionId)
+        toast.success("Account disconnected")
+        router.refresh()
+      } catch {
+        toast.error("Failed to disconnect that account")
+      }
+    })
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {platforms.map(({ key, label, icon: Icon }) => {
-          const isReal = REAL_PLATFORMS.has(key)
-          const connection = connections?.[key]
-          const isConnected = isReal ? Boolean(connection) : connectedSet.has(key)
-
-          return (
-            <Card key={key}>
-              <CardContent className="flex flex-col items-center gap-3 px-4 py-5 text-center">
-                {connection?.thumbnailUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={connection.thumbnailUrl}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    className="size-6 rounded-full"
-                  />
-                ) : (
-                  <Icon
-                    className={cn(
-                      "size-6",
-                      isConnected ? "text-primary" : "text-muted-foreground"
-                    )}
-                  />
-                )}
-                <div>
-                  <p className="text-sm font-medium">{label}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {connection
-                      ? connection.name
-                      : isConnected
-                        ? "Connected"
-                        : "Not connected"}
-                  </p>
-                </div>
-                {isReal && !isConnected ? (
-                  <Button type="button" size="sm" className="w-full" disabled={isBusy}
-                    aria-busy={connectingPlatform === key} onClick={() => handleOAuthConnect(key)}>
-                    <ActionLabel loading={connectingPlatform === key} idle="Connect" busy="Connecting…" />
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={isConnected ? "outline" : "default"}
-                    className="w-full"
-                    disabled={isBusy}
-                    aria-busy={isPending && activeAction === `${isConnected ? "disconnect" : "connect"}:${key}`}
-                    onClick={() =>
-                      isConnected ? handleDisconnect(key) : handleConnect(key)
-                    }
-                  >
-                    <ActionLabel
-                      loading={isPending && activeAction === `${isConnected ? "disconnect" : "connect"}:${key}`}
-                      idle={isConnected ? "Disconnect" : "Connect"}
-                      busy={isConnected ? "Disconnecting…" : "Connecting…"}
-                    />
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          )
-        })}
+        <MultiAccountCard
+          icon={Music2}
+          label="TikTok"
+          connections={tiktokConnections}
+          defaultConnection={defaultTikTokAccount}
+          expanded={tiktokExpanded}
+          onToggleExpanded={() => setExpandedPlatform((current) => current === "TIKTOK" ? null : "TIKTOK")}
+          itemNounPlural="accounts"
+          listId="tiktok-account-list"
+          isBusy={isBusy}
+          connecting={connectingPlatform === "TIKTOK"}
+          onAdd={() => handleOAuthConnect("TIKTOK")}
+          addLabel={defaultTikTokAccount ? "Add account" : "Connect"}
+        />
 
         <MultiAccountCard
           icon={PlaySquare}
@@ -417,6 +365,23 @@ export function ConnectedAccounts({
           onDisconnect={handleDisconnectInstagramAccount}
           defaultDescription="Default publishing account"
           hint="Adding another account opens Instagram's login so you can sign into a different account."
+        />
+      )}
+      {tiktokExpanded && tiktokConnections.length > 0 && (
+        <MultiAccountList
+          id="tiktok-account-list"
+          title="Connected TikTok accounts"
+          description="Each account is its own TikTok login. Choose your default account. TikTok publishing is not available yet."
+          icon={Camera}
+          connections={tiktokConnections}
+          radioGroupName="tt-default-account"
+          isBusy={isBusy}
+          activeAction={activeAction}
+          isPending={isPending}
+          onSetDefault={handleSetDefaultTikTokAccount}
+          onDisconnect={handleDisconnectTikTokAccount}
+          defaultDescription="Default account"
+          hint="To add a different account, switch accounts on TikTok's authorization page. If it reuses your login, sign out of TikTok in this browser first."
         />
       )}
     </div>

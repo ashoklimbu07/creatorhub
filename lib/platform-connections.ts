@@ -3,6 +3,7 @@ import type { Platform } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { facebookService } from "@/services/platforms/facebook.service"
 import { youtubeService } from "@/services/platforms/youtube.service"
+import { tiktokService } from "@/services/platforms/tiktok.service"
 import { instagramService } from "@/services/platforms/instagram.service"
 import type {
   PlatformConnectionInfo,
@@ -21,6 +22,7 @@ export type PlatformConnectionsSummary = {
   facebook: MultiPlatformSummary
   youtube: MultiPlatformSummary
   instagram: MultiPlatformSummary
+  tiktok: MultiPlatformSummary
 }
 
 function summarize(connections: MultiConnectionInfo[]): MultiPlatformSummary {
@@ -30,15 +32,11 @@ function summarize(connections: MultiConnectionInfo[]): MultiPlatformSummary {
   }
 }
 
-// TikTok stays single-connection-per-user, so its rows collapse 1:1 into a
-// Platform-keyed map. Facebook (one row per Page), YouTube (one row per
-// channel), and Instagram (one row per account — see InstagramService) can
-// have several PlatformConnection rows per user and are summarized
-// separately.
+// Summarize each provider independently, preserving the selected default account.
 export async function getPlatformConnectionsSummary(
   userId: string
 ): Promise<PlatformConnectionsSummary> {
-  const [otherConnections, facebookConnections, youtubeConnections, instagramConnections] =
+  const [otherConnections, facebookConnections, youtubeConnections, instagramConnections, tiktokConnections] =
     await Promise.all([
       prisma.platformConnection.findMany({
         where: { userId, platform: { notIn: ["FACEBOOK", "YOUTUBE", "INSTAGRAM"] } },
@@ -47,6 +45,7 @@ export async function getPlatformConnectionsSummary(
       facebookService.getConnections(userId),
       youtubeService.getConnections(userId),
       instagramService.getConnections(userId),
+      tiktokService.getConnections(userId),
     ])
 
   const singleConnections = Object.fromEntries(
@@ -61,5 +60,6 @@ export async function getPlatformConnectionsSummary(
     facebook: summarize(facebookConnections),
     youtube: summarize(youtubeConnections),
     instagram: summarize(instagramConnections),
+    tiktok: summarize(tiktokConnections),
   }
 }
